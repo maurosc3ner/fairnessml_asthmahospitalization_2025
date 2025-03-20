@@ -1,0 +1,527 @@
+---
+title: ''
+output: html_document
+date: "2023-10-10"
+---
+
+v1
+bootstrapping for glm models focused on length of stay
+extensive code clean-up for equations 
+factors based of los.fairness.univariate.v1
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,message=FALSE,warning = F,results = T)
+rm(list = ls())
+library(tidyverse)
+library(patchwork)
+library(rstanarm)
+library(bayesplot)
+library(loo)
+library(lme4)
+library(gtsummary)
+library(fairness)
+library(caret)
+library(randomForest)
+library(xgboost)
+library(themis)
+cbPalette <- c("#E64B35", "#4DBBD5")
+source("../allofus_los_Jtrans2024/helpers.R")
+source("myFairness.R")
+
+myLevels<-c("ProlongedStay","ShortStay")
+load("data.splitted.los.v1.RData")
+```
+
+```{r}
+hist(data.splitted.los[["iter1"]]$data2.train$los,64)
+
+summary(data.splitted.los[["iter1"]]$data2.train$los)
+```
+
+```{r}
+rb.eq<-formula(losBinaryNum ~
+      s.age:sex_at_birth +
+      s.dep +
+      race3 +
+      hcType1 +
+      weekend +
+      season + 
+      AD.lon +
+      AR.lon +
+      Cancer.lon+
+      CHD.lon +
+      CKD.lon +
+      COPD.lon +
+      Depression.lon +
+      Diab.lon +
+      # FA.lon +
+      # EoE.lon
+      GERD.lon +
+      HTA.lon +
+      OBST.lon +
+      # PSOR.lon +
+      APNEA.lon +
+      (1 | id) + (1 | ehrsite))
+
+rn.eq<-formula(losBinaryNum ~
+      s.age:sex_at_birth +
+      s.dep +
+      # race3 +
+      hcType1 +
+      weekend +
+      season + 
+      AD.lon +
+      AR.lon +
+      Cancer.lon+
+      CHD.lon +
+      CKD.lon +
+      COPD.lon +
+      Depression.lon +
+      Diab.lon +
+      # FA.lon +
+      # EoE.lon
+      GERD.lon +
+      HTA.lon +
+      OBST.lon +
+      # PSOR.lon +
+      APNEA.lon +
+      (1 | id) + (1 | ehrsite))
+
+rs.eq<-formula(losBinaryNum ~
+      s.age:sex_at_birth +
+      s.dep +
+      # race3 +
+      hcType1 +
+      weekend +
+      season + 
+      AD.lon +
+      AR.lon +
+      Cancer.lon+
+      CHD.lon +
+      CKD.lon +
+      COPD.lon +
+      Depression.lon +
+      Diab.lon +
+      # FA.lon +
+      # EoE.lon
+      GERD.lon +
+      HTA.lon +
+      OBST.lon +
+      # PSOR.lon +
+      APNEA.lon +
+      (1 | id) + (1 | ehrsite))
+
+```
+
+
+### GLM no sampling
+
+```{r}
+model1Label="rb.glm"
+model2Label="rn.glm"
+model3Label="rs.glm"
+
+upsampling=F
+testDF.los.glm.bt={}
+for(i in 1:length(data.splitted.los)){
+# for(i in 1:2){
+  print(i)
+  idx=paste0("iter",i)
+  
+  if(upsampling){
+    data=upSampler(data.splitted.los[[idx]]$data2.train,"race3",0.7)
+  }else{
+    data=data.splitted.los[[idx]]$data2.train
+  }
+  
+  # print("cp upsampling")
+  model.rb.glm.ss <- glmer(
+    formula = rb.eq,
+    data = data,
+    family = binomial(),
+    nAGQ = 0,
+    glmerControl(
+      optimizer = "bobyqa",
+      calc.derivs = FALSE,
+      optCtrl = list(maxfun = 2e5)
+    )
+  )
+
+  #race-neutral stratified
+  model.rn.glm.ss <- glmer(
+    formula = rn.eq,
+    data = data,
+    family = binomial(),
+    nAGQ = 0,
+    glmerControl(
+      optimizer = "bobyqa",
+      calc.derivs = FALSE,
+      optCtrl = list(maxfun = 2e5)
+    )
+  )
+ 
+  #race-specific AA stratified
+  model.raa.glm.ss <- glmer(
+    formula = rs.eq,
+    data = data.splitted.los[[idx]]$data2.train.AA,
+    family = binomial(),
+    nAGQ = 0,
+    glmerControl(
+      optimizer = "bobyqa",
+      calc.derivs = FALSE,
+      optCtrl = list(maxfun = 2e5)
+    )
+  )
+  
+  #race-specific EA stratified
+  model.rea.glm.ss <- glmer(
+    formula = rs.eq,
+    data = data.splitted.los[[idx]]$data2.train.EA,
+    family = binomial(),
+    # nAGQ = 0,
+    glmerControl(
+      optimizer = "bobyqa",
+      calc.derivs = FALSE,
+      optCtrl = list(maxfun = 2e5)
+    )
+  )
+  
+  #race-specific Asian stratified
+  model.ras.glm.ss <- glmer(
+    formula = rs.eq,
+    data = data.splitted.los[[idx]]$data2.train.AS,
+    family = binomial(),
+    # nAGQ = 0,
+    glmerControl(
+      optimizer = "bobyqa",
+      calc.derivs = FALSE,
+      optCtrl = list(maxfun = 2e5)
+    )
+  )
+  
+  #race-specific HL stratified
+  model.rhl.glm.ss <- glmer(
+    formula = rs.eq,
+    data = data.splitted.los[[idx]]$data2.train.HL,
+    family = binomial(),
+    # nAGQ = 0,
+    glmerControl(
+      optimizer = "bobyqa",
+      calc.derivs = FALSE,
+      optCtrl = list(maxfun = 2e5)
+    )
+  )
+  
+  #race-specific MENA stratified
+  model.rmena.glm.ss <- glmer(
+    formula = rs.eq,
+    data = data.splitted.los[[idx]]$data2.train.MENA,
+    family = binomial(),
+    # nAGQ = 0,
+    glmerControl(
+      optimizer = "bobyqa",
+      calc.derivs = FALSE,
+      optCtrl = list(maxfun = 2e5)
+    )
+  )
+  
+  ## for rb, rn
+  # data.splitted.los[[idx]]$data2.valid$hcType1<-factor(data.splitted.los[[idx]]$data2.valid$hcType1)
+  dfResults=data.splitted.los[[idx]]$data2.valid %>% dplyr::select(race3,losBinaryFactor)
+  dfResults$prob.rb.glm<-predict(model.rb.glm.ss,data.splitted.los[[idx]]$data2.valid,type='response',allow.new.levels=T)
+  dfResults$r30d.pred.rb.glm.ss <- factor(ifelse(dfResults$prob.rb.glm>0.5,myLevels[1],myLevels[2]),levels=myLevels)
+  dfResults$prob.rn.glm<-predict(model.rn.glm.ss,data.splitted.los[[idx]]$data2.valid,type='response',allow.new.levels=T)
+  dfResults$r30d.pred.rn.glm.ss <- factor(ifelse(dfResults$prob.rn.glm>0.5,myLevels[1],myLevels[2]),levels=myLevels)
+  
+  # because size, race-specific requires other df
+  dfResults.aa=data.splitted.los[[idx]]$data2.valid.AA %>% dplyr::select(race3,losBinaryFactor)
+  dfResults.aa$prob.raa.glm<-predict(model.raa.glm.ss,data.splitted.los[[idx]]$data2.valid.AA,type='response',allow.new.levels=T)
+  dfResults.aa$r30d.pred.raa.glm.ss <- factor(ifelse(dfResults.aa$prob.raa.glm>0.5,myLevels[1],myLevels[2]),levels=myLevels)
+  dfResults.ea=data.splitted.los[[idx]]$data2.valid.EA %>% dplyr::select(race3,losBinaryFactor)
+  dfResults.ea$prob.rea.glm<-predict(model.rea.glm.ss,data.splitted.los[[idx]]$data2.valid.EA,type='response',allow.new.levels=T)
+  dfResults.ea$r30d.pred.rea.glm.ss <- factor(ifelse(dfResults.ea$prob.rea.glm>0.5,myLevels[1],myLevels[2]),levels=myLevels)
+  dfResults.as=data.splitted.los[[idx]]$data2.valid.AS %>% dplyr::select(race3,losBinaryFactor)
+  dfResults.as$prob.ras.glm<-predict(model.ras.glm.ss,data.splitted.los[[idx]]$data2.valid.AS,type='response',allow.new.levels=T)
+  dfResults.as$r30d.pred.ras.glm.ss <- factor(ifelse(dfResults.as$prob.ras.glm>0.5,myLevels[1],myLevels[2]),levels=myLevels)
+  dfResults.hl=data.splitted.los[[idx]]$data2.valid.HL %>% dplyr::select(race3,losBinaryFactor)
+  dfResults.hl$prob.rhl.glm<-predict(model.rhl.glm.ss,data.splitted.los[[idx]]$data2.valid.HL,type='response',allow.new.levels=T)
+  dfResults.hl$r30d.pred.rhl.glm.ss <- factor(ifelse(dfResults.hl$prob.rhl.glm>0.5,myLevels[1],myLevels[2]),levels=myLevels)
+  dfResults.mena=data.splitted.los[[idx]]$data2.valid.MENA %>% dplyr::select(race3,losBinaryFactor)
+  dfResults.mena$prob.rmena.glm<-predict(model.rmena.glm.ss,data.splitted.los[[idx]]$data2.valid.MENA,type='response',allow.new.levels=T)
+  dfResults.mena$r30d.pred.rmena.glm.ss <- factor(ifelse(dfResults.mena$prob.rmena.glm>0.5,myLevels[1],myLevels[2]),levels=myLevels)
+  
+  ######
+  # rb all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rb.glm.ss,
+    reference=dfResults$losBinaryFactor)
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                      fairmetrics2DF(F,"All",model1Label,cm))
+  # print(cm)
+  # rb black aa
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rb.glm.ss), 
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(losBinaryFactor))
+  # print(cm$table)
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"Black_AA",model1Label,cm))
+  # rb white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rb.glm.ss), 
+    reference = dfResults %>% filter(race3 == 'White_EA') %>% pull(losBinaryFactor))
+  # print(cm$table)
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"White_EA",model1Label,cm))
+  # rb asian 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rb.glm.ss), 
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(losBinaryFactor))
+  # print(cm$table)
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"Asian",model1Label,cm))
+  # rb HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rb.glm.ss), 
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(losBinaryFactor))
+  # print(cm$table)
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"HL",model1Label,cm))
+  # print(cm$table)
+  # rb MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rb.glm.ss), 
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(losBinaryFactor))
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"MENA",model1Label,cm))
+  
+  ###### race neutral glm
+  # rn all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rn.glm.ss,
+    reference=dfResults$losBinaryFactor)
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(F,"All",model2Label,cm))
+  # rn black aa
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rn.glm.ss),
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(losBinaryFactor))
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"Black_AA",model2Label,cm))
+  # rn white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rn.glm.ss),
+    reference = dfResults %>% filter(race3 == 'White_EA') %>% pull(losBinaryFactor))
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"White_EA",model2Label,cm))
+  # rn asian
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rn.glm.ss),
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(losBinaryFactor))
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"Asian",model2Label,cm))
+  # rn HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rn.glm.ss),
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(losBinaryFactor))
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"HL",model2Label,cm))
+  # rn MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rn.glm.ss),
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(losBinaryFactor))
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"MENA",model2Label,cm))
+  
+  ###### 
+  # rs black aa
+  cm<-confusionMatrix(
+    data = dfResults.aa %>% pull(r30d.pred.raa.glm.ss),
+    reference = dfResults.aa %>% pull(losBinaryFactor))
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"Black_AA",model3Label,cm))
+  # rs black ea
+  cm<-confusionMatrix(
+    data = dfResults.ea %>% pull(r30d.pred.rea.glm.ss),
+    reference = dfResults.ea %>% pull(losBinaryFactor))
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"White_EA",model3Label,cm))
+  # rs asian
+  cm<-confusionMatrix(
+    data = dfResults.as %>% pull(r30d.pred.ras.glm.ss),
+    reference = dfResults.as %>% pull(losBinaryFactor))
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"Asian",model3Label,cm))
+  # rs HL
+  cm<-confusionMatrix(
+    data = dfResults.hl %>% pull(r30d.pred.rhl.glm.ss),
+    reference = dfResults.hl %>% pull(losBinaryFactor))
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"HL",model3Label,cm))
+  # rs MENA
+  cm<-confusionMatrix(
+    data = dfResults.mena %>% pull(r30d.pred.rmena.glm.ss),
+    reference = dfResults.mena %>% pull(losBinaryFactor))
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"MENA",model3Label,cm))
+  
+} 
+```
+
+
+
+
+### GLM upsampling
+
+```{r}
+model1Label="rb.glm.up"
+model2Label="rn.glm.up"
+# upsampling is not required in race specific 
+# model2Label="rs.glm.up"
+upsampling=T
+for(i in 1:length(data.splitted.los)){
+# for(i in 1:2){
+  print(i)
+  idx=paste0("iter",i)
+  
+  if(upsampling){
+    # databup<-data.splitted.los[[idx]]$data2.train
+    # databup$race4=paste0(data.splitted.los[[idx]]$data2.train$race3,
+    #                      data.splitted.los[[idx]]$data2.train$losBinaryFactor)
+    data=upSampler(data.splitted.los[[idx]]$data2.train,"race3",0.7)
+  }else{
+    data=data.splitted.los[[idx]]$data2.train
+  }
+  
+  # print("cp upsampling")
+  model.rb.glm.up <- glmer(
+    formula=rb.eq,
+    data = data,
+    family = binomial(),
+    nAGQ = 0,
+    glmerControl(
+      optimizer = "bobyqa",
+      calc.derivs = FALSE,
+      optCtrl = list(maxfun = 2e5)
+    )
+  )
+  # print("cp rb")
+  #race-neutral stratified
+  model.rn.glm.up <- glmer(
+    formula=rn.eq,
+    data = data,
+    family = binomial(),
+    nAGQ = 0,
+    glmerControl(
+      optimizer = "bobyqa",
+      calc.derivs = FALSE,
+      optCtrl = list(maxfun = 2e5)
+    )
+  )
+  # print("cp rn")
+  
+  data.splitted.los[[idx]]$data2.valid$hcType1<-factor(data.splitted.los[[idx]]$data2.valid$hcType1)
+  dfResults=data.splitted.los[[idx]]$data2.valid %>% dplyr::select(race3,losBinaryFactor)
+  dfResults$prob.rb.glm<-predict(model.rb.glm.ss,data.splitted.los[[idx]]$data2.valid,type='response',allow.new.levels=T)
+  dfResults$r30d.pred.rb.glm.ss <- factor(ifelse(dfResults$prob.rb.glm>0.5,myLevels[1],myLevels[2]),levels=myLevels)
+  dfResults$prob.rn.glm<-predict(model.rn.glm.ss,data.splitted.los[[idx]]$data2.valid,type='response',allow.new.levels=T)
+  dfResults$r30d.pred.rn.glm.ss <- factor(ifelse(dfResults$prob.rn.glm>0.5,myLevels[1],myLevels[2]),levels=myLevels)
+  
+  ######
+  # rb all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rb.glm.ss,
+    reference=dfResults$losBinaryFactor)
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                      fairmetrics2DF(F,"All",model1Label,cm))
+
+  # rb black aa
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rb.glm.ss), 
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(losBinaryFactor))
+  # print(cm$table)
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"Black_AA",model1Label,cm))
+  # rb white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rb.glm.ss), 
+    reference = dfResults %>% filter(race3 == 'White_EA') %>% pull(losBinaryFactor))
+  # print(cm$table)
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"White_EA",model1Label,cm))
+  # rb asian 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rb.glm.ss), 
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(losBinaryFactor))
+  # print(cm$table)
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"Asian",model1Label,cm))
+  # rb HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rb.glm.ss), 
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(losBinaryFactor))
+  # print(cm$table)
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"HL",model1Label,cm))
+  # print(cm$table)
+  # rb MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rb.glm.ss), 
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(losBinaryFactor))
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"MENA",model1Label,cm))
+  
+  ###### race neutral glm
+  # rn all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rn.glm.ss,
+    reference=dfResults$losBinaryFactor)
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(F,"All",model2Label,cm))
+  # rn black aa
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rn.glm.ss),
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(losBinaryFactor))
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"Black_AA",model2Label,cm))
+  # rn white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rn.glm.ss),
+    reference = dfResults %>% filter(race3 == 'White_EA') %>% pull(losBinaryFactor))
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"White_EA",model2Label,cm))
+  # rn asian
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rn.glm.ss),
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(losBinaryFactor))
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"Asian",model2Label,cm))
+  # rn HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rn.glm.ss),
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(losBinaryFactor))
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"HL",model2Label,cm))
+  # rn MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rn.glm.ss),
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(losBinaryFactor))
+  testDF.los.glm.bt<-rbind(testDF.los.glm.bt,
+                   fairmetrics2DF(T,"MENA",model2Label,cm))
+} 
+```
+
+
+
+```{r}
+save(testDF.los.glm.bt,file = "testDF.los.glm.bt.RData",compress = T)
+```
+
+
+
+```{r}
+
+```
+
+
+

@@ -1,0 +1,1088 @@
+---
+title: ''
+output: html_document
+date: "2023-10-10"
+---
+
+v1
+table of bootstrapping for all models
+
+v2 
+inclusion of catboosting
+
+v3
+use of new files 
+formated by race as requested by Tes
+
+v4
+double checking values and files
+weighted sum column added
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,message=FALSE,warning = F,results = T)
+rm(list = ls())
+library(tidyverse)
+library(patchwork)
+library(rstanarm)
+library(bayesplot)
+library(loo)
+library(lme4)
+library(gtsummary)
+library(fairness)
+library(caret)
+library(randomForest)
+library(xgboost)
+
+cbPalette <- c("#E64B35", "#4DBBD5")
+source("../allofus_los_Jtrans2024/helpers.R")
+source("utils-fairness.R")
+
+myLevels<-c('Yes','No')
+
+load(file = "testDF.read.glm.bt.v3.RData")
+load(file = "testDF.read.rf.bt.v3.RData")
+load(file = "testDF.read.xgb.bt.v3.RData")
+load(file = "testDF.read.catb.bt.v2.RData")
+
+```
+
+
+## preprocessing
+
+
+
+```{r}
+testList=rbind(
+testDF.read.glm.bt,
+testDF.read.rf.bt,
+testDF.read.xgb.bt,
+testDF.read.catb.bt
+)
+
+races<-c('White_EA',
+         'Black_AA',
+         'Asian',
+         'HL',
+         'MENA')
+
+rb.alg<-c('rb.glm',
+          'rb.glm.up',
+          'rs.glm',
+          'rb.rf',
+          'rb.rf.up',
+          'rb.xgb',
+          'rb.xgb.up',
+          'rb.catb',
+          'rb.catb.up')
+
+rn.alg<-c('rn.glm',
+          'rn.glm.up',
+          'rn.rf',
+          'rn.rf.up',
+          'rn.xgb',
+          'rn.xgb.up',
+          'rn.catb',
+          'rn.catb.up')
+
+metrics<-c('accuracy',
+          'sensitivity',
+          'specificity',
+          'prop.parity')
+
+digi=2
+```
+
+## White 
+
+```{r}
+i=1
+rbind(
+cbind(a=rb.alg[1],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[2],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[3],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[4],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[5],confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[6],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[7],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[8],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[9],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[4]))
+)
+)
+```
+
+
+
+```{r}
+rbind(
+cbind(a=rn.alg[1],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[2],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[3],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[4],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[5],confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[6],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[7],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[8],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[4]))
+)
+)
+```
+
+
+## Black AA 
+
+```{r}
+i=2
+rbind(
+cbind(a=rb.alg[1],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[2],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[3],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[4],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[5],confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[6],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[7],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[8],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[9],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[4]))
+)
+)
+```
+
+
+
+```{r}
+rbind(
+cbind(a=rn.alg[1],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[2],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[3],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[4],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[5],confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[6],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[7],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[8],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[4]))
+)
+)
+```
+
+
+## Asian
+
+```{r}
+i=3
+rbind(
+cbind(a=rb.alg[1],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[2],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[3],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[4],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[5],confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[6],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[7],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[8],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[9],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[4]))
+)
+)
+```
+
+
+
+```{r}
+rbind(
+cbind(a=rn.alg[1],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[2],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[3],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[4],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[5],confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[6],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[7],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[8],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[4]))
+)
+)
+```
+
+
+## HL
+
+```{r}
+i=4
+rbind(
+cbind(a=rb.alg[1],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[2],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[3],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[4],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[5],confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[6],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[7],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[8],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[9],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[4]))
+)
+)
+```
+
+
+
+```{r}
+rbind(
+cbind(a=rn.alg[1],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[2],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[3],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[4],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[5],confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[6],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[7],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[8],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[4]))
+)
+)
+```
+
+
+## MENA
+
+```{r}
+i=5
+rbind(
+cbind(a=rb.alg[1],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[1 ]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[1]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[2],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[2]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[3],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[3]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[4],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[4]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[5],confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[5]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[6],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[6]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[7],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[7]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[8],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[8]) %>% pull(metrics[4]))
+),
+
+cbind(a=rb.alg[9],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rb.alg[9]) %>% pull(metrics[4]))
+)
+)
+```
+
+
+
+```{r}
+rbind(
+cbind(a=rn.alg[1],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[1]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[2],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[2]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[3],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[3]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[4],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[4]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[5],confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[5]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[6],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[6]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[7],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[7]) %>% pull(metrics[4]))
+),
+
+cbind(a=rn.alg[8],
+confidence_interval(testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[1]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[2]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[3]),0.95,digi),
+confidence_interval(testList%>% filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[4]),0.95,digi),
+ov=myBestPerformer(testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[1]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[2]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[3]),
+                testList%>%filter(groupoi==races[i] & algo==rn.alg[8]) %>% pull(metrics[4]))
+)
+)
+```
+

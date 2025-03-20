@@ -1,0 +1,762 @@
+---
+title: ''
+output: html_document
+date: "2023-10-10"
+---
+
+v1
+vis for glm models
+
+v2 
+vis for all models including upsampling
+includes heatmap and color bar between algorithms
+
+v3 
+visualizing only top performers in each race group
+color contrast improved
+deep code clean up
+
+v4
+graphical abstract figures added
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,message=FALSE,warning = F,results = T)
+rm(list = ls())
+library(tidyverse)
+library(patchwork)
+library(rstanarm)
+library(bayesplot)
+library(loo)
+library(lme4)
+library(gtsummary)
+library(fairness)
+library(caret)
+library(randomForest)
+library(xgboost)
+library(viridis)
+
+cbPalette <- c("#E64B35", "#4DBBD5")
+source("../allofus_los_Jtrans2024/helpers.R")
+source("myFairness.R")
+
+myLevels<-c('Yes','No')
+
+
+get_legend <- function(a.gplot){ 
+    tmp <- ggplot_gtable(ggplot_build(a.gplot)) 
+    leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box") 
+    legend <- tmp$grobs[[leg]] 
+    legend
+} 
+```
+
+```{r}
+load(file="testDF.los.glm.bt.v1.RData")
+summary(factor(testDF.los.glm.bt$algo))
+load(file="testDF.los.rf.bt.v1.RData")
+summary(factor(testDF.los.rf.bt$algo))
+load(file="testDF.los.xgb.bt.v1.RData")
+summary(factor(testDF.los.xgb.bt$algo))
+load(file="testDF.los.catb.bt.RData")
+summary(factor(testDF.los.catb.bt$algo))
+
+#readmission
+load(file = "testDF.read.glm.bt.v3.RData")
+summary(factor(testDF.read.glm.bt$algo))
+load(file = "testDF.read.rf.bt.v3.RData")
+load(file = "testDF.read.xgb.bt.v3.RData")
+load(file = "testDF.read.catb.bt.v2.RData")
+
+```
+
+
+
+
+
+Notes
+- If we are looking to sell race-neutral approaches, don't bring additional rb approaches into the conversation.
+- Always compare others vs race-based approaches
+
+
+```{r}
+metrics_df_f1<-{}
+
+metrics_df_f1$white.los.auc.base<-testDF.los.glm.bt %>% filter(groupoi=="White_EA" & algo=="rb.glm") %>% pull(accuracy)
+metrics_df_f1$white.los.sens.base<-testDF.los.glm.bt %>% filter(groupoi=="White_EA" & algo=="rb.glm") %>% pull(sensitivity)
+metrics_df_f1$white.los.spec.base<-testDF.los.glm.bt %>% filter(groupoi=="White_EA" & algo=="rb.glm") %>% pull(specificity)
+metrics_df_f1$white.los.pp.base<-testDF.los.glm.bt %>% filter(groupoi=="White_EA" & algo=="rb.glm") %>% pull(prop.parity)
+metrics_df_f1$white.los.auc.best<-testDF.los.glm.bt %>% filter(groupoi=="White_EA" & algo=="rb.glm.up") %>% pull(accuracy)
+metrics_df_f1$white.los.sens.best<-testDF.los.glm.bt %>% filter(groupoi=="White_EA" & algo=="rb.glm.up") %>% pull(sensitivity)
+metrics_df_f1$white.los.spec.best<-testDF.los.glm.bt %>% filter(groupoi=="White_EA" & algo=="rb.glm.up") %>% pull(specificity)
+metrics_df_f1$white.los.pp.best<-testDF.los.glm.bt %>% filter(groupoi=="White_EA" & algo=="rb.glm.up") %>% pull(prop.parity)
+
+
+metrics_df_f1$black.los.auc.base<-testDF.los.glm.bt %>% filter(groupoi=="Black_AA" & algo=="rb.glm") %>% pull(accuracy)
+metrics_df_f1$black.los.sens.base<-testDF.los.glm.bt %>% filter(groupoi=="Black_AA" & algo=="rb.glm") %>% pull(sensitivity)
+metrics_df_f1$black.los.spec.base<-testDF.los.glm.bt %>% filter(groupoi=="Black_AA" & algo=="rb.glm") %>% pull(specificity)
+metrics_df_f1$black.los.pp.base<-testDF.los.glm.bt %>% filter(groupoi=="Black_AA" & algo=="rb.glm") %>% pull(prop.parity)
+metrics_df_f1$black.los.auc.best<-testDF.los.glm.bt %>% filter(groupoi=="Black_AA" & algo=="rn.glm.up") %>% pull(accuracy)
+metrics_df_f1$black.los.sens.best<-testDF.los.glm.bt %>% filter(groupoi=="Black_AA" & algo=="rn.glm.up") %>% pull(sensitivity)
+metrics_df_f1$black.los.spec.best<-testDF.los.glm.bt %>% filter(groupoi=="Black_AA" & algo=="rn.glm.up") %>% pull(specificity)
+metrics_df_f1$black.los.pp.best<-testDF.los.glm.bt %>% filter(groupoi=="Black_AA" & algo=="rn.glm.up") %>% pull(prop.parity)
+
+metrics_df_f1$asian.los.auc.base<-testDF.los.glm.bt %>% filter(groupoi=="Asian" & algo=="rb.glm") %>% pull(accuracy)
+metrics_df_f1$asian.los.sens.base<-testDF.los.glm.bt %>% filter(groupoi=="Asian" & algo=="rb.glm") %>% pull(sensitivity)
+metrics_df_f1$asian.los.spec.base<-testDF.los.glm.bt %>% filter(groupoi=="Asian" & algo=="rb.glm") %>% pull(specificity)
+metrics_df_f1$asian.los.pp.base<-testDF.los.glm.bt %>% filter(groupoi=="Asian" & algo=="rb.glm") %>% pull(prop.parity)
+metrics_df_f1$asian.los.auc.best<-testDF.los.glm.bt %>% filter(groupoi=="Asian" & algo=="rb.glm.up") %>% pull(accuracy)
+metrics_df_f1$asian.los.sens.best<-testDF.los.glm.bt %>% filter(groupoi=="Asian" & algo=="rb.glm.up") %>% pull(sensitivity)
+metrics_df_f1$asian.los.spec.best<-testDF.los.glm.bt %>% filter(groupoi=="Asian" & algo=="rb.glm.up") %>% pull(specificity)
+metrics_df_f1$asian.los.pp.best<-testDF.los.glm.bt %>% filter(groupoi=="Asian" & algo=="rb.glm.up") %>% pull(prop.parity)
+
+metrics_df_f1$hl.los.auc.base<-testDF.los.glm.bt %>% filter(groupoi=="HL" & algo=="rb.glm") %>% pull(accuracy)
+metrics_df_f1$hl.los.sens.base<-testDF.los.glm.bt %>% filter(groupoi=="HL" & algo=="rb.glm") %>% pull(sensitivity)
+metrics_df_f1$hl.los.spec.base<-testDF.los.glm.bt %>% filter(groupoi=="HL" & algo=="rb.glm") %>% pull(specificity)
+metrics_df_f1$hl.los.pp.base<-testDF.los.glm.bt %>% filter(groupoi=="HL" & algo=="rb.glm") %>% pull(prop.parity)
+metrics_df_f1$hl.los.auc.best<-testDF.los.glm.bt %>% filter(groupoi=="HL" & algo=="rn.glm.up") %>% pull(accuracy)
+metrics_df_f1$hl.los.sens.best<-testDF.los.glm.bt %>% filter(groupoi=="HL" & algo=="rn.glm.up") %>% pull(sensitivity)
+metrics_df_f1$hl.los.spec.best<-testDF.los.glm.bt %>% filter(groupoi=="HL" & algo=="rn.glm.up") %>% pull(specificity)
+metrics_df_f1$hl.los.pp.best<-testDF.los.glm.bt %>% filter(groupoi=="HL" & algo=="rn.glm.up") %>% pull(prop.parity)
+
+metrics_df_f1$mena.los.auc.base<-testDF.los.glm.bt %>% filter(groupoi=="MENA" & algo=="rb.glm") %>% pull(accuracy)
+metrics_df_f1$mena.los.sens.base<-testDF.los.glm.bt %>% filter(groupoi=="MENA" & algo=="rb.glm") %>% pull(sensitivity)
+metrics_df_f1$mena.los.spec.base<-testDF.los.glm.bt %>% filter(groupoi=="MENA" & algo=="rb.glm") %>% pull(specificity)
+metrics_df_f1$mena.los.pp.base<-testDF.los.glm.bt %>% filter(groupoi=="MENA" & algo=="rb.glm") %>% pull(prop.parity)
+metrics_df_f1$mena.los.auc.best<-testDF.los.glm.bt %>% filter(groupoi=="MENA" & algo=="rb.glm.up") %>% pull(accuracy)
+metrics_df_f1$mena.los.sens.best<-testDF.los.glm.bt %>% filter(groupoi=="MENA" & algo=="rb.glm.up") %>% pull(sensitivity)
+metrics_df_f1$mena.los.spec.best<-testDF.los.glm.bt %>% filter(groupoi=="MENA" & algo=="rb.glm.up") %>% pull(specificity)
+metrics_df_f1$mena.los.pp.best<-testDF.los.glm.bt %>% filter(groupoi=="MENA" & algo=="rb.glm.up") %>% pull(prop.parity)
+
+## Readmission
+metrics_df_f1$white.read.auc.base<-testDF.read.glm.bt %>% filter(groupoi=="White_EA" & algo=="rb.glm") %>% pull(accuracy)
+metrics_df_f1$white.read.sens.base<-testDF.read.glm.bt %>% filter(groupoi=="White_EA" & algo=="rb.glm") %>% pull(sensitivity)
+metrics_df_f1$white.read.spec.base<-testDF.read.glm.bt %>% filter(groupoi=="White_EA" & algo=="rb.glm") %>% pull(specificity)
+metrics_df_f1$white.read.pp.base<-testDF.read.glm.bt %>% filter(groupoi=="White_EA" & algo=="rb.glm") %>% pull(prop.parity)
+metrics_df_f1$white.read.auc.best<-testDF.read.xgb.bt %>% filter(groupoi=="White_EA" & algo=="rn.xgb") %>% pull(accuracy)
+metrics_df_f1$white.read.sens.best<-testDF.read.xgb.bt %>% filter(groupoi=="White_EA" & algo=="rn.xgb") %>% pull(sensitivity)
+metrics_df_f1$white.read.spec.best<-testDF.read.xgb.bt %>% filter(groupoi=="White_EA" & algo=="rn.xgb") %>% pull(specificity)
+metrics_df_f1$white.read.pp.best<-testDF.read.xgb.bt %>% filter(groupoi=="White_EA" & algo=="rn.xgb") %>% pull(prop.parity)
+
+metrics_df_f1$black.read.auc.base<-testDF.read.glm.bt %>% filter(groupoi=="Black_AA" & algo=="rb.glm") %>% pull(accuracy)
+metrics_df_f1$black.read.sens.base<-testDF.read.glm.bt %>% filter(groupoi=="Black_AA" & algo=="rb.glm") %>% pull(sensitivity)
+metrics_df_f1$black.read.spec.base<-testDF.read.glm.bt %>% filter(groupoi=="Black_AA" & algo=="rb.glm") %>% pull(specificity)
+metrics_df_f1$black.read.pp.base<-testDF.read.glm.bt %>% filter(groupoi=="Black_AA" & algo=="rb.glm") %>% pull(prop.parity)
+metrics_df_f1$black.read.auc.best<-testDF.read.xgb.bt %>% filter(groupoi=="Black_AA" & algo=="rb.xgb") %>% pull(accuracy)
+metrics_df_f1$black.read.sens.best<-testDF.read.xgb.bt %>% filter(groupoi=="Black_AA" & algo=="rb.xgb") %>% pull(sensitivity)
+metrics_df_f1$black.read.spec.best<-testDF.read.xgb.bt %>% filter(groupoi=="Black_AA" & algo=="rb.xgb") %>% pull(specificity)
+metrics_df_f1$black.read.pp.best<-testDF.read.xgb.bt %>% filter(groupoi=="Black_AA" & algo=="rb.xgb") %>% pull(prop.parity)
+
+metrics_df_f1$asian.read.auc.base<-testDF.read.glm.bt %>% filter(groupoi=="Asian" & algo=="rb.glm") %>% pull(accuracy)
+metrics_df_f1$asian.read.sens.base<-testDF.read.glm.bt %>% filter(groupoi=="Asian" & algo=="rb.glm") %>% pull(sensitivity)
+metrics_df_f1$asian.read.spec.base<-testDF.read.glm.bt %>% filter(groupoi=="Asian" & algo=="rb.glm") %>% pull(specificity)
+metrics_df_f1$asian.read.pp.base<-testDF.read.glm.bt %>% filter(groupoi=="Asian" & algo=="rb.glm") %>% pull(prop.parity)
+metrics_df_f1$asian.read.auc.best<-testDF.read.xgb.bt %>% filter(groupoi=="Asian" & algo=="rb.xgb") %>% pull(accuracy)
+metrics_df_f1$asian.read.sens.best<-testDF.read.xgb.bt %>% filter(groupoi=="Asian" & algo=="rb.xgb") %>% pull(sensitivity)
+metrics_df_f1$asian.read.spec.best<-testDF.read.xgb.bt %>% filter(groupoi=="Asian" & algo=="rb.xgb") %>% pull(specificity)
+metrics_df_f1$asian.read.pp.best<-testDF.read.xgb.bt %>% filter(groupoi=="Asian" & algo=="rb.xgb") %>% pull(prop.parity)
+
+metrics_df_f1$hl.read.auc.base<-testDF.read.glm.bt %>% filter(groupoi=="HL" & algo=="rb.glm") %>% pull(accuracy)
+metrics_df_f1$hl.read.sens.base<-testDF.read.glm.bt %>% filter(groupoi=="HL" & algo=="rb.glm") %>% pull(sensitivity)
+metrics_df_f1$hl.read.spec.base<-testDF.read.glm.bt %>% filter(groupoi=="HL" & algo=="rb.glm") %>% pull(specificity)
+metrics_df_f1$hl.read.pp.base<-testDF.read.glm.bt %>% filter(groupoi=="HL" & algo=="rb.glm") %>% pull(prop.parity)
+metrics_df_f1$hl.read.auc.best<-testDF.read.xgb.bt %>% filter(groupoi=="HL" & algo=="rn.xgb") %>% pull(accuracy)
+metrics_df_f1$hl.read.sens.best<-testDF.read.xgb.bt %>% filter(groupoi=="HL" & algo=="rn.xgb") %>% pull(sensitivity)
+metrics_df_f1$hl.read.spec.best<-testDF.read.xgb.bt %>% filter(groupoi=="HL" & algo=="rn.xgb") %>% pull(specificity)
+metrics_df_f1$hl.read.pp.best<-testDF.read.xgb.bt %>% filter(groupoi=="HL" & algo=="rn.xgb") %>% pull(prop.parity)
+
+metrics_df_f1$mena.read.auc.base<-testDF.read.glm.bt %>% filter(groupoi=="MENA" & algo=="rb.glm") %>% pull(accuracy)
+metrics_df_f1$mena.read.sens.base<-testDF.read.glm.bt %>% filter(groupoi=="MENA" & algo=="rb.glm") %>% pull(sensitivity)
+metrics_df_f1$mena.read.spec.base<-testDF.read.glm.bt %>% filter(groupoi=="MENA" & algo=="rb.glm") %>% pull(specificity)
+metrics_df_f1$mena.read.pp.base<-testDF.read.glm.bt %>% filter(groupoi=="MENA" & algo=="rb.glm") %>% pull(prop.parity)
+metrics_df_f1$mena.read.auc.best<-testDF.read.xgb.bt %>% filter(groupoi=="MENA" & algo=="rn.xgb") %>% pull(accuracy)
+metrics_df_f1$mena.read.sens.best<-testDF.read.xgb.bt %>% filter(groupoi=="MENA" & algo=="rn.xgb") %>% pull(sensitivity)
+metrics_df_f1$mena.read.spec.best<-testDF.read.xgb.bt %>% filter(groupoi=="MENA" & algo=="rn.xgb") %>% pull(specificity)
+metrics_df_f1$mena.read.pp.best<-testDF.read.xgb.bt %>% filter(groupoi=="MENA" & algo=="rn.xgb") %>% pull(prop.parity)
+
+metrics_df_f1<-as.data.frame(metrics_df_f1)
+summary(metrics_df_f1)
+
+metrics_df_f1_long<-metrics_df_f1 %>%
+  # dplyr::select(ratio_wb,ratio_wa,ratio_wh,ratio_wm) %>%
+  gather(.,metric,value,white.los.auc.base:mena.read.pp.best,factor_key = T)%>% 
+  mutate(group="Baseline") %>% 
+  separate_wider_delim(metric, delim = ".", names = c("groupoi","outcome", "metric","model"))
+
+# summary(factor(metrics_df_f1_long$metric))
+
+(df_f1_summary<-metrics_df_f1_long %>% 
+  group_by(outcome,groupoi,metric,model) %>% 
+  summarise(mean=mean(value),
+            mysd=sd(value),
+            mylength=length(value),
+            myse=mysd/sqrt(mylength),
+            ci=myse*qt((1-0.05)/2+0.5,mylength-1)
+            ) 
+)
+
+df_f1_summary$groupoi<-factor(df_f1_summary$groupoi,levels = (c('white','black','asian','hl','mena')))
+df_f1_summary$model<-factor(df_f1_summary$model,levels = (c('base','best')))
+df_f1_summary$outcome<-factor(df_f1_summary$outcome,levels = (c('los','read')))
+df_f1_summary$metric<-factor(df_f1_summary$metric,levels = (c('auc','sens','spec','pp')))
+
+```
+
+```{r}
+facet_names <- c(
+  `los` = "LoS",
+  `read` = "Readmission",
+  `white` = "White",
+                 `black` = "Black",
+                 `asian` = "Asian",
+                 `hl` = "HL",
+                 `mena` = "MENA"
+                )
+
+xlabels=c("AUC","Sensitivity","Specificity")
+flabels=c("Baseline","Best model")
+(f1a<-df_f1_summary%>%
+  filter(outcome=="los" & metric!="pp") %>% 
+  ggplot(aes(x = metric, y = mean, fill = model,ymin=mean-ci,ymax=mean+ci)) +
+  # geom_col(color = "black", width = 0.9,position = "dodge2")+
+  geom_bar(stat = "identity",position = position_dodge2(),alpha=0.7)+
+  geom_errorbar(position = position_dodge(width=0.9),width=0.4,colour="black",alpha=0.9,size=0.5)+
+  coord_cartesian(ylim=c(0, 1))+
+  scale_x_discrete(guide = guide_axis(angle=0,n.dodge = 2)
+                   ,labels=xlabels
+                   # ,limits=rev(levels(ratio))
+                   ) +
+  # scale_fill_brewer(palette = "Greens"
+  #                   ,labels=flabels
+  #                   )+
+    scale_fill_manual(values=c("#69B41E","#0D5B11")
+                      ,labels=flabels
+                      )+
+  labs(subtitle="A) Asthma LoS",fill="LoS Model",y="Score",x="")+
+  facet_wrap(vars(groupoi),labeller=as_labeller(facet_names),ncol = 5)+
+  theme_classic()
+)
+
+
+(f1b<-df_f1_summary%>%
+  filter(outcome=="read" & metric!="pp") %>% 
+  ggplot(aes(x = metric, y = mean, fill = model,ymin=mean-ci,ymax=mean+ci)) +
+  # geom_col(color = "black", width = 0.9,position = "dodge2")+
+  geom_bar(stat = "identity",position = position_dodge2(),alpha=0.7)+
+  geom_errorbar(position = position_dodge(width=0.9),width=0.4,colour="black",alpha=0.9,size=0.5)+
+  coord_cartesian(ylim=c(0, 1))+
+  scale_x_discrete(guide = guide_axis(angle=0,n.dodge = 2)
+                   ,labels=xlabels
+                   # ,limits=rev(levels(ratio))
+                   ) +
+    
+  # scale_fill_brewer(palette = "Blues"
+  #                   ,labels=flabels
+  #                   )+
+    scale_fill_manual(values=c("#4169E1","#031279")
+                      ,labels=flabels)+
+  labs(subtitle="B) Asthma Readmission",fill="Readmission\nModel",y="Score",x="")+
+  facet_wrap(vars(groupoi),labeller=as_labeller(facet_names),ncol = 5)+
+  theme_classic()
+)
+
+(f1.full<-f1a/f1b)
+
+# ggsave(filename = "images/f1.v3b.png", f1.full,# en cm mejor para mantener el tamanho
+# width=3400,height = 2200, dpi = 300, units = "px", device='png')
+```
+
+
+## GA
+
+```{r}
+xlabels=c("AUC","Sensitivity","Specificity","Prop. Parity")
+flabels=c("Baseline")
+
+(ga1<-df_f1_summary%>%
+  filter(outcome=="read" & model=="base") %>% 
+  ggplot(aes(x = metric, y = mean, fill = model,ymin=mean-ci,ymax=mean+ci)) +
+  # geom_col(color = "black", width = 0.9,position = "dodge2")+
+  geom_bar(stat = "identity",position = position_dodge2(),alpha=0.7)+
+  geom_errorbar(position = position_dodge(width=0.9),width=0.4,colour="black",alpha=0.9,size=0.5)+
+  coord_cartesian(ylim=c(0, 1))+
+  scale_x_discrete(guide = guide_axis(angle=45
+                                      # ,n.dodge = 0
+                                      )
+                   ,labels=xlabels
+                   ) +
+
+    scale_fill_manual(values=c("#4169E1","#031279")
+                      ,labels=flabels)+
+  labs(subtitle="Baseline Model",fill="Readmission\nModel",y="Score",x="")+
+  facet_wrap(vars(groupoi),labeller=as_labeller(facet_names),ncol = 5)+
+  theme_classic()+
+    theme(legend.position = "None")
+)
+flabels=c("Best model")
+(ga2<-df_f1_summary%>%
+  filter(outcome=="read" & model=="best") %>% 
+  ggplot(aes(x = metric, y = mean, fill = model,ymin=mean-ci,ymax=mean+ci)) +
+  geom_bar(stat = "identity",position = position_dodge2(),alpha=0.7)+
+  geom_errorbar(position = position_dodge(width=0.9),width=0.4,colour="black",alpha=0.9,size=0.5)+
+  coord_cartesian(ylim=c(0, 1))+
+  scale_x_discrete(guide = guide_axis(angle=45
+                                      # ,n.dodge = 2
+                                      )
+                   ,labels=xlabels
+                   ) +
+
+    scale_fill_manual(values=c("#031279")
+                      ,labels=flabels)+
+  labs(subtitle="Debiased Model",fill="Readmission\nModel",y="Score",x="")+
+  facet_wrap(vars(groupoi),labeller=as_labeller(facet_names),ncol = 5)+
+  theme_classic()+
+    theme(legend.position = "None")
+)
+
+(ga.full<-ga1+ga2)
+
+ggsave(filename = "images/ga.v1.png", ga.full,# en cm mejor para mantener el tamanho
+width=3400,height = 2200, dpi = 300, units = "px", device='png')
+```
+
+
+## p-values for los
+
+between non-white and reference using top algorithms
+
+```{r}
+t.test(metrics_df_f1$black.los.auc.best, metrics_df_f1$white.los.auc.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$asian.los.auc.best, metrics_df_f1$white.los.auc.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$hl.los.auc.best, metrics_df_f1$white.los.auc.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$mena.los.auc.best, metrics_df_f1$white.los.auc.best, alternative = "two.sided", var.equal = FALSE)
+
+t.test(metrics_df_f1$black.los.sens.best, metrics_df_f1$white.los.sens.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$asian.los.sens.best, metrics_df_f1$white.los.sens.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$hl.los.sens.best, metrics_df_f1$white.los.sens.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$mena.los.sens.best, metrics_df_f1$white.los.sens.best, alternative = "two.sided", var.equal = FALSE)
+
+t.test(metrics_df_f1$black.los.spec.best, metrics_df_f1$white.los.spec.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$asian.los.spec.best, metrics_df_f1$white.los.spec.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$hl.los.spec.best, metrics_df_f1$white.los.spec.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$mena.los.spec.best, metrics_df_f1$white.los.spec.best, alternative = "two.sided", var.equal = FALSE)
+
+t.test(metrics_df_f1$black.los.pp.best, metrics_df_f1$white.los.pp.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$asian.los.pp.best, metrics_df_f1$white.los.pp.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$hl.los.pp.best, metrics_df_f1$white.los.pp.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$mena.los.pp.best, metrics_df_f1$white.los.pp.best, alternative = "two.sided", var.equal = FALSE)
+```
+## p-values for read
+
+between non-white and reference using top algorithms
+
+```{r}
+t.test(metrics_df_f1$black.read.auc.best, metrics_df_f1$white.read.auc.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$asian.read.auc.best, metrics_df_f1$white.read.auc.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$hl.read.auc.best, metrics_df_f1$white.read.auc.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$mena.read.auc.best, metrics_df_f1$white.read.auc.best, alternative = "two.sided", var.equal = FALSE)
+
+t.test(metrics_df_f1$black.read.sens.best, metrics_df_f1$white.read.sens.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$asian.read.sens.best, metrics_df_f1$white.read.sens.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$hl.read.sens.best, metrics_df_f1$white.read.sens.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$mena.read.sens.best, metrics_df_f1$white.read.sens.best, alternative = "two.sided", var.equal = FALSE)
+
+t.test(metrics_df_f1$black.read.spec.best, metrics_df_f1$white.read.spec.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$asian.read.spec.best, metrics_df_f1$white.read.spec.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$hl.read.spec.best, metrics_df_f1$white.read.spec.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$mena.read.spec.best, metrics_df_f1$white.read.spec.best, alternative = "two.sided", var.equal = FALSE)
+
+t.test(metrics_df_f1$black.read.pp.best, metrics_df_f1$white.read.pp.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$asian.read.pp.best, metrics_df_f1$white.read.pp.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$hl.read.pp.best, metrics_df_f1$white.read.pp.best, alternative = "two.sided", var.equal = FALSE)
+t.test(metrics_df_f1$mena.read.pp.best, metrics_df_f1$white.read.pp.best, alternative = "two.sided", var.equal = FALSE)
+```
+
+
+# LoS
+
+## ratio unfairness baseline
+
+```{r}
+lratio=c('Black vs White','Asian vs White','Hl vs White','MENA vs White')
+di_df_los_baseline<-{}
+
+di_df_los_baseline$ratio_wb<-metrics_df_f1$black.los.pp.base/metrics_df_f1$white.los.pp.base
+di_df_los_baseline$ratio_wa<-metrics_df_f1$asian.los.pp.base/metrics_df_f1$white.los.pp.base
+di_df_los_baseline$ratio_wh<-metrics_df_f1$hl.los.pp.base/metrics_df_f1$white.los.pp.base
+di_df_los_baseline$ratio_wm<-metrics_df_f1$mena.los.pp.base/metrics_df_f1$white.los.pp.base
+
+di_df_los_baseline<-as.data.frame(di_df_los_baseline)
+summary(di_df_los_baseline)
+
+quantile(di_df_los_baseline$ratio_wb,probs = c(0.025,0.5,0.975))
+quantile(di_df_los_baseline$ratio_wa,probs = c(0.025,0.5,0.975))
+quantile(di_df_los_baseline$ratio_wh,probs = c(0.025,0.5,0.975))
+quantile(di_df_los_baseline$ratio_wm,probs = c(0.025,0.5,0.975))
+
+di_df_los_baseline2<-di_df_los_baseline %>%
+  dplyr::select(ratio_wb,ratio_wa,ratio_wh,ratio_wm) %>%
+  gather(.,ratio,value,ratio_wb:ratio_wm,factor_key = T)%>% 
+  mutate(group="Baseline")
+
+pp_df_los_baseline<-metrics_df_f1 %>%
+  dplyr::select(white.los.pp.base,
+                black.los.pp.base,
+                asian.los.pp.base,
+                hl.los.pp.base,
+                mena.los.pp.base
+                ) %>%
+  gather(.,pp,value,white.los.pp.base:mena.los.pp.base,factor_key = T)%>% 
+  mutate(group="Baseline")
+
+ggplot(di_df_los_baseline2,aes(x=ratio,y=value)) + 
+  geom_boxplot(aes(fill=ratio),outliers = F)+
+  # coord_cartesian(ylim=c(-0.1,0.1))+
+  geom_hline(yintercept = 1,lty="dashed",color="blue")+
+  stat_summary(fun.y = mean, geom="point",colour="darkred", size=2) +
+  scale_x_discrete(guide = guide_axis(angle=75)
+                   ,labels=lratio
+                   ) +
+  scale_fill_viridis_d(option = 8,labels=lratio)+
+  labs(fill="Method",y="",x="",subtitle="Readmission's DI Ratio (Baseline)")+
+  theme_classic()+
+  theme(legend.position = "none")
+```
+
+## ratio unfairness after mitigation
+
+```{r}
+lratio=c('Black vs White','Asian vs White','HL vs White','MENA vs White')
+di_df_los_post<-{}
+
+di_df_los_post$ratio_wb<-metrics_df_f1$black.los.pp.best/metrics_df_f1$white.los.pp.best
+di_df_los_post$ratio_wa<-metrics_df_f1$asian.los.pp.best/metrics_df_f1$white.los.pp.best
+di_df_los_post$ratio_wh<-metrics_df_f1$hl.los.pp.best/metrics_df_f1$white.los.pp.best
+di_df_los_post$ratio_wm<-metrics_df_f1$mena.los.pp.best/metrics_df_f1$white.los.pp.best
+
+di_df_los_post<-as.data.frame(di_df_los_post)
+summary(di_df_los_post)
+
+quantile(di_df_los_post$ratio_wb,probs = c(0.025,0.5,0.975))
+quantile(di_df_los_post$ratio_wa,probs = c(0.025,0.5,0.975))
+quantile(di_df_los_post$ratio_wh,probs = c(0.025,0.5,0.975))
+quantile(di_df_los_post$ratio_wm,probs = c(0.025,0.5,0.975))
+
+di_df_los_post2<-di_df_los_post %>%
+  dplyr::select(ratio_wb,ratio_wa,ratio_wh,ratio_wm) %>%
+  gather(.,ratio,value,ratio_wb:ratio_wm,factor_key = T)%>% 
+  mutate(group="Best model")
+
+pp_df_los_post<-metrics_df_f1 %>%
+  dplyr::select(white.los.pp.best,
+                black.los.pp.best,
+                asian.los.pp.best,
+                hl.los.pp.best,
+                mena.los.pp.best
+                ) %>%
+  gather(.,pp,value,white.los.pp.best:mena.los.pp.best,factor_key = T)%>% 
+  mutate(group="Best model")
+
+ggplot(di_df_los_post2,aes(x=ratio,y=value)) + 
+  geom_boxplot(aes(fill=ratio),outliers = F)+
+  # coord_cartesian(ylim=c(-0.1,0.1))+
+  geom_hline(yintercept = 1,lty="dashed",color="blue")+
+  stat_summary(fun.y = mean, geom="point",colour="darkred", size=2) +
+  scale_x_discrete(guide = guide_axis(angle=75)
+                   ,labels=lratio
+                   ) +
+  scale_fill_viridis_d(option = 8,labels=lratio)+
+  labs(fill="Method",y="",x="",subtitle="Readmission's DI Ratio (Baseline)")+
+  theme_classic()+
+  theme(legend.position = "none")
+```
+
+```{r}
+pp_df_los_both=rbind(pp_df_los_baseline,pp_df_los_post) 
+pp_summary<-pp_df_los_both %>% 
+  group_by(pp,group) %>% 
+  summarise(mean=mean(value),
+            mysd=sd(value),
+            mylength=length(value),
+            myse=mysd/sqrt(mylength),
+            ci=myse*qt((1-0.05)/2+0.5,mylength-1)
+            ) %>% 
+  separate_wider_delim(pp, delim = ".", names = c("groupoi","outcome", "metric","model")) %>% 
+  mutate(groupoi=factor(groupoi,levels=c("white","black","asian","hl","mena"))
+    ,group=factor(group,levels=c("Baseline","Best model")))
+pp_summary
+
+
+lpp=c('White','Black','Asian','HL','MENA')
+(a<-ggplot(pp_summary,aes(x=groupoi,y=mean,fill=group,ymin=mean-ci,ymax=mean+ci))+
+  geom_bar(stat = "identity",position = position_dodge(),alpha=0.7)+
+  geom_errorbar(position = position_dodge(width=0.9),width=0.4,colour="orange",alpha=0.9,size=1.0)+
+  scale_x_discrete(guide = guide_axis(angle=0,n.dodge = 2)
+                   ,labels=(lpp)
+                   # ,limits=rev(levels(pp))
+                   ) +
+  # scale_fill_brewer(palette = "Greens")+
+    scale_fill_manual(values=c("#69B41E","#0D5B11"))+
+  labs(fill="LoS Model",y="Prop. Parity (%)",x=""
+       ,subtitle="A) Asthma LoS"
+       )+
+  theme_classic()+
+  theme(legend.position = "right"
+        # ,panel.background = element_rect(fill = "gray60",
+        #                         colour = "gray60",
+        #                         size = 0.5, linetype = "solid")
+        )
+)
+
+legend.los<-get_legend(a)
+a<-a+theme(legend.position = "none")
+
+```
+
+```{r}
+di_df_los_both=rbind(di_df_los_baseline2,di_df_los_post2) 
+(b<-ggplot(di_df_los_both,
+           aes(x=ratio,
+               y=value,
+               fill=factor(group,levels=c('Baseline','Best model')))) + 
+  geom_boxplot(outliers = F)+
+  geom_hline(yintercept = 1,lty="dashed",color="blue")+
+  scale_x_discrete(guide = guide_axis(angle=0,n.dodge = 2)
+                   ,labels=(lratio)
+                   # ,limits=rev(levels(ratio))
+                   ) +
+  # scale_fill_brewer(palette = "Greens")+
+        scale_fill_manual(values=c("#69B41E","#0D5B11"))+
+
+  labs(fill="Simulations",y="DI (Ratio)",x="")+
+  theme_classic()+
+  theme(legend.position = "none"
+        # ,
+        # panel.background = element_rect(fill = "gray60",
+        #                         colour = "gray60",
+        #                         size = 0.5, linetype = "solid")
+        )
+)
+```
+
+# Readmission
+
+## ratio unfairness baseline
+
+```{r}
+lratio=c('Black vs White','Asian vs White','HL vs White','MENA vs White')
+di_df_read<-{}
+
+di_df_read$ratio_wb<-metrics_df_f1$black.read.pp.base/metrics_df_f1$white.read.pp.base
+di_df_read$ratio_wa<-metrics_df_f1$asian.read.pp.base/metrics_df_f1$white.read.pp.base
+di_df_read$ratio_wh<-metrics_df_f1$hl.read.pp.base/metrics_df_f1$white.read.pp.base
+di_df_read$ratio_wm<-metrics_df_f1$mena.read.pp.base/metrics_df_f1$white.read.pp.base
+di_df_read<-as.data.frame(di_df_read)
+summary(di_df_read)
+
+quantile(di_df_read$ratio_wb,probs = c(0.025,0.5,0.975))
+quantile(di_df_read$ratio_wa,probs = c(0.025,0.5,0.975))
+quantile(di_df_read$ratio_wh,probs = c(0.025,0.5,0.975))
+quantile(di_df_read$ratio_wm,probs = c(0.025,0.5,0.975))
+
+di_df_read2<-di_df_read %>%
+  dplyr::select(ratio_wb,ratio_wa,ratio_wh,ratio_wm) %>%
+  gather(.,ratio,value,ratio_wb:ratio_wm,factor_key = T)%>% 
+  mutate(group="Baseline")
+
+pp_df_read_baseline<-metrics_df_f1 %>%
+  dplyr::select(white.read.pp.base,
+              black.read.pp.base,
+              asian.read.pp.base,
+              hl.read.pp.base,
+              mena.read.pp.base
+              ) %>%
+  gather(.,pp,value,white.read.pp.base:mena.read.pp.base,factor_key = T)%>% 
+  mutate(group="Baseline")
+
+ggplot(di_df_read2,aes(x=ratio,y=value)) + 
+  geom_boxplot(aes(fill=ratio),outliers = F)+
+  # coord_cartesian(ylim=c(-0.1,0.1))+
+  geom_hline(yintercept = 1,lty="dashed",color="blue")+
+  stat_summary(fun.y = mean, geom="point",colour="darkred", size=2) +
+  scale_x_discrete(guide = guide_axis(angle=75)
+                   ,labels=lratio
+                   ) +
+  scale_fill_viridis_d(option = 8,labels=lratio)+
+  labs(fill="Method",y="",x="",subtitle="Readmission's DI Ratio (Baseline)")+
+  theme_classic()+
+  theme(legend.position = "none")
+```
+
+
+## ratio unfairness after mitigation
+
+```{r}
+lratio=c('Black vs White','Asian vs White','HL vs White','MENA vs White')
+di_df_read_post<-{}
+di_df_read_post$ratio_wb<-metrics_df_f1$black.read.pp.best/metrics_df_f1$white.read.pp.best
+di_df_read_post$ratio_wa<-metrics_df_f1$asian.read.pp.best/metrics_df_f1$white.read.pp.best
+di_df_read_post$ratio_wh<-metrics_df_f1$hl.read.pp.best/metrics_df_f1$white.read.pp.best
+di_df_read_post$ratio_wm<-metrics_df_f1$mena.read.pp.best/metrics_df_f1$white.read.pp.best
+
+di_df_read_post<-as.data.frame(di_df_read_post)
+summary(di_df_read_post)
+
+quantile(di_df_read_post$ratio_wb,probs = c(0.025,0.5,0.975))
+quantile(di_df_read_post$ratio_wa,probs = c(0.025,0.5,0.975))
+quantile(di_df_read_post$ratio_wh,probs = c(0.025,0.5,0.975))
+quantile(di_df_read_post$ratio_wm,probs = c(0.025,0.5,0.975))
+
+di_df_read_post2<-di_df_read_post %>%
+  dplyr::select(ratio_wb,ratio_wa,ratio_wh,ratio_wm) %>%
+  gather(.,ratio,value,ratio_wb:ratio_wm,factor_key = T) %>% 
+  mutate(group="Best model")
+
+pp_df_read_post<-metrics_df_f1 %>%
+  dplyr::select(white.read.pp.best,
+              black.read.pp.best,
+              asian.read.pp.best,
+              hl.read.pp.best,
+              mena.read.pp.best
+              ) %>%
+  gather(.,pp,value,white.read.pp.best:mena.read.pp.best,factor_key = T)%>% 
+  mutate(group="Best model")
+
+ggplot(di_df_read_post2,aes(x=ratio,y=value)) + 
+  geom_boxplot(aes(fill=ratio),outliers = F)+
+  # coord_cartesian(ylim=c(-0.2,0.1))+
+  # coord_flip()+
+  geom_hline(yintercept = 1,lty="dashed",color="blue")+
+  stat_summary(fun.y = mean, geom="point",colour="darkred", size=2) +
+  scale_x_discrete(guide = guide_axis(angle=0)
+                   ,labels=lratio
+                   ) +
+  scale_fill_viridis_d(option = 8,labels=lratio)+
+  labs(fill="Method",y="",x="",subtitle="Readmission's DI Ratio (after unfairness mitigation)")+
+  theme_classic()+
+  theme(legend.position = "none")
+```
+
+```{r}
+pp_df_both=rbind(pp_df_read_baseline,pp_df_read_post) 
+pp_summary<-pp_df_both %>% 
+  group_by(pp,group) %>% 
+  summarise(mean=mean(value),
+            mysd=sd(value),
+            mylength=length(value),
+            myse=mysd/sqrt(mylength),
+            ci=myse*qt((1-0.05)/2+0.5,mylength-1)
+            ) %>% 
+  separate_wider_delim(pp, delim = ".", names = c("groupoi","outcome", "metric","model")) %>% 
+  mutate(groupoi=factor(groupoi,levels=c("white","black","asian","hl","mena"))
+    ,group=factor(group,levels=c("Baseline","Best model")))
+
+pp_summary
+
+lpp=c('White','Black','Asian','HL','MENA')
+(c<-ggplot(pp_summary,aes(x=groupoi,y=mean,fill=group,ymin=mean-ci,ymax=mean+ci))+
+  geom_bar(stat = "identity",position = position_dodge(),alpha=0.7)+
+  geom_errorbar(position = position_dodge(width=0.9),width=0.4,colour="orange",alpha=0.9,size=1.0)+
+  scale_x_discrete(guide = guide_axis(angle=0,n.dodge = 2)
+                   ,labels=(lpp)
+                   # ,limits=rev(levels(pp))
+                   ) +
+  # scale_fill_brewer()+
+        scale_fill_manual(values=c("#4169E1","#031279"))+
+  labs(fill="Readmission\nModel",y="Prop. Parity (%)",x=""
+       , subtitle="B) Asthma Readmission"
+       # ,subtitle="Prop. parity across races (before vs after mitigation)"
+       )+
+  theme_classic()+
+  theme(legend.position = "right"
+        # ,
+        # panel.background = element_rect(fill = "gray60",
+        #                         colour = "gray60",
+        #                         size = 0.5, linetype = "solid")
+        )
+)
+
+legendread<-get_legend(c)
+c<-c+theme(legend.position = "none")
+```
+
+Disparate impact ratio
+
+```{r}
+di_df_read_both=rbind(di_df_read2,di_df_read_post2) 
+(d<-ggplot(di_df_read_both,aes(
+  # x=forcats::fct_rev(ratio),
+                      x=ratio
+                      ,y=value,fill=factor(group,levels=c('Baseline','Best model')))) + 
+  geom_boxplot(outliers = F)+
+  geom_hline(yintercept = 1,lty="dashed",color="blue")+
+  # stat_summary(fun.y = mean, geom="point",colour="darkred", size=2) +
+  scale_x_discrete(guide = guide_axis(angle=0,n.dodge = 2)
+                   ,labels=(lratio)
+                   # ,limits=rev(levels(ratio))
+                   ) +
+  # scale_fill_brewer(palette = "Blues")+
+            scale_fill_manual(values=c("#4169E1","#031279"))+
+
+  labs(fill="Simulations",y="DI (Ratio)",x=""
+       # ,subtitle="DI Ratio (before and after mitigation)"
+       )+
+  theme_classic()+
+  theme(legend.position = "none"
+        # ,panel.background = element_rect(fill = "gray60",
+        #                         colour = "gray60",
+        #                         size = 0.5, linetype = "solid")
+        )
+)
+```
+
+
+
+
+
+```{r}
+(f2.full<-(a+b+legend.los)/(c+d+legendread))
+
+# ggsave(filename = "images/f2.v3b.png", f2.full,# en cm mejor para mantener el tamanho
+#   width=2800,height = 2200, dpi = 300, units = "px", device='png')
+```
+
+
+
+
+```{r}
+t.test(di_df_los_both %>% filter(ratio=="ratio_wb" & group=="Baseline") %>% pull(value),
+       di_df_los_both %>% filter(ratio=="ratio_wb" & group=="Best model") %>% pull(value),
+       alternative = "two.sided", var.equal = FALSE)
+
+t.test(di_df_los_both %>% filter(ratio=="ratio_wa" & group=="Baseline") %>% pull(value),
+       di_df_los_both %>% filter(ratio=="ratio_wa" & group=="Best model") %>% pull(value),
+       alternative = "two.sided", var.equal = FALSE)
+
+t.test(di_df_los_both %>% filter(ratio=="ratio_wh" & group=="Baseline") %>% pull(value),
+       di_df_los_both %>% filter(ratio=="ratio_wh" & group=="Best model") %>% pull(value),
+       alternative = "two.sided", var.equal = FALSE)
+
+t.test(di_df_los_both %>% filter(ratio=="ratio_wm" & group=="Baseline") %>% pull(value),
+       di_df_los_both %>% filter(ratio=="ratio_wm" & group=="Best model") %>% pull(value),
+       alternative = "two.sided", var.equal = FALSE)
+```
+
+```{r}
+t.test(di_df_read_both %>% filter(ratio=="ratio_wb" & group=="Baseline") %>% pull(value),
+       di_df_read_both %>% filter(ratio=="ratio_wb" & group=="Best model") %>% pull(value),
+       alternative = "two.sided", var.equal = FALSE)
+
+t.test(di_df_read_both %>% filter(ratio=="ratio_wa" & group=="Baseline") %>% pull(value),
+       di_df_read_both %>% filter(ratio=="ratio_wa" & group=="Best model") %>% pull(value),
+       alternative = "two.sided", var.equal = FALSE)
+
+t.test(di_df_read_both %>% filter(ratio=="ratio_wh" & group=="Baseline") %>% pull(value),
+       di_df_read_both %>% filter(ratio=="ratio_wh" & group=="Best model") %>% pull(value),
+       alternative = "two.sided", var.equal = FALSE)
+
+t.test(di_df_read_both %>% filter(ratio=="ratio_wm" & group=="Baseline") %>% pull(value),
+       di_df_read_both %>% filter(ratio=="ratio_wm" & group=="Best model") %>% pull(value),
+       alternative = "two.sided", var.equal = FALSE)
+```
+

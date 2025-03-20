@@ -1,0 +1,194 @@
+---
+title: ''
+output: html_document
+date: "2023-10-10"
+---
+
+v1
+Intended to data shuffling, splitting for bootstrapping for LoS
+XGB fails at loading. Dmatrix requires to be done outside of the list
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,message=FALSE,warning = F,results = T)
+rm(list = ls())
+library(tidyverse)
+library(patchwork)
+library(rstanarm)
+library(bayesplot)
+library(loo)
+library(lme4)
+library(gtsummary)
+library(fairness)
+library(caret)
+library(randomForest)
+library(xgboost)
+
+cbPalette <- c("#E64B35", "#4DBBD5")
+source("../allofus_los_Jtrans2024/helpers.R")
+load("../allofus_los_Jtrans2024/readmissionProject/asthma.read.multivariate.full.stan.v7.RData")
+
+rm(glmer.read.ri.full.d,glmer.read.ri.full.e,glmer.read.ri.full.f,glmer.read.ri.full.g,
+   stan.read.ri.full.d,stan.read.ri.full.e,stan.read.ri.full.f,stan.read.ri.full.g,t_prior,coefs,knots,cbPalette)
+```
+
+
+
+
+
+With patient-level partitioning, there is not cases classified as readmitted ('Yes') due to probability lower than 0.5. We should test this partitioning at visits-level.
+
+
+# Dataset partitioning by visits-level
+
+```{r}
+data.splitted.los<-list()
+```
+
+
+```{r}
+myLevels<-c("ProlongedStay","ShortStay")
+# visit occurrence is not unique
+# data$visit_id<-as.character(data$visit_occurrence_id)
+# data %>% 
+#   summarise(count=n_distinct(visit_id))
+
+#let's create it
+data2<-data %>% 
+  group_by(id) %>% 
+  arrange(visit_start_date) %>% 
+  mutate(id_visit=paste0(id,'-',row_number()),
+         losBinaryNum=ifelse(los==0,0,1),
+         losBinaryFactor=factor(ifelse(losBinaryNum==0,"ShortStay","ProlongedStay"),levels=c("ShortStay","ProlongedStay")))%>% 
+  ungroup()
+#check proportions on data2
+data2 %>% 
+  group_by(race3,readmission30d) %>% 
+  summarise(n=n()) %>% 
+  mutate(prop=(100*n/nrow(data2)) %>% round(1),
+         prop2t=paste0(paste0(n," (",prop,")"))
+         ) %>% 
+  select(race3,readmission30d,prop2t)
+data2$losBinaryFactor<-factor(data2$losBinaryFactor,levels=myLevels)
+
+#check proportions on data2
+data2 %>% 
+  group_by(race3,losBinaryFactor) %>% 
+  summarise(n=n()) %>% 
+  mutate(prop=(100*n/nrow(data2)) %>% round(1),
+         prop2t=paste0(paste0(n," (",prop,")"))
+         ) %>% 
+  select(race3,losBinaryFactor,prop2t)
+data2$losBinaryFactor<-factor(data2$losBinaryFactor,levels=myLevels)
+data2$hcType1<-factor(data2$hcType1)
+```
+
+
+```{r}
+set.seed(27)
+val_percent<-0.3
+
+
+for(i in 1:100){
+  data2.train<-data2 %>% 
+    group_by(race3,losBinaryFactor) %>% 
+    slice_sample(prop=1-val_percent) 
+  
+  #check proportions on data2.train
+  data2.train.props<-data2.train %>% 
+    group_by(race3,losBinaryFactor) %>% 
+    summarise(n=n()) %>% 
+    mutate(prop=(100*n/nrow(data2.train)) %>% round(1),
+           prop2t=paste0(paste0(n," (",prop,")"))
+           ) %>% 
+    select(race3,losBinaryFactor,prop2t)
+  
+  #race-specific datasets
+  data2.train.AA<-data2.train %>% filter(race3=='Black_AA')
+  droplevels(data2.train.AA)
+  data2.train.EA<-data2.train %>% filter(race3=='White_EA') 
+  droplevels(data2.train.EA)
+  data2.train.AS<-data2.train %>% filter(race3=='Asian')
+  droplevels(data2.train.AS)
+  data2.train.HL<-data2.train %>% filter(race3=='HL')
+  droplevels(data2.train.HL)
+  data2.train.MENA<-data2.train %>% filter(race3=='MENA')
+  droplevels(data2.train.MENA)
+  #RF dataset
+  data2.train.RF<-data2.train %>% 
+    dplyr::select(losBinaryFactor,s.age,sex_at_birth,s.dep,race3,hcType1,weekend,season,
+                  AD.lon,AR.lon,Cancer.lon,CHD.lon,CKD.lon,COPD.lon,Depression.lon,Diab.lon,
+                  # FA.lon, EoE.lon, #not significant
+                  GERD.lon,HTA.lon,OBST.lon,APNEA.lon)
+
+  
+  ############# data validation
+  data2.valid<-data2 %>% 
+    filter(!id_visit %in% data2.train$id_visit) 
+  levels(data2.valid$losBinaryFactor)
+  
+  #check proportions on data2.train
+  data2.valid.props<-data2.valid %>% 
+    group_by(race3,losBinaryFactor) %>% 
+    summarise(n=n()) %>% 
+    mutate(prop=(100*n/nrow(data2.valid)) %>% round(1),
+           prop2t=paste0(paste0(n," (",prop,")"))
+           ) %>% 
+    select(race3,losBinaryFactor,prop2t)
+  
+  #race-specific dataset
+  data2.valid.AA<-data2.valid %>% filter(race3=='Black_AA')
+  data2.valid.EA<-data2.valid %>% filter(race3=='White_EA')
+  data2.valid.AS<-data2.valid %>% filter(race3=='Asian')
+  data2.valid.HL<-data2.valid %>% filter(race3=='HL')
+  data2.valid.MENA<-data2.valid %>% filter(race3=='MENA')
+  #RF dataset only has the required predictors
+  # same sample size than data2.valid
+  data2.valid.RF<-data2.valid %>% 
+    dplyr::select(losBinaryFactor,s.age,sex_at_birth,s.dep,race3,hcType1,weekend,season,
+                  AD.lon,AR.lon,Cancer.lon,CHD.lon,CKD.lon,COPD.lon,Depression.lon,Diab.lon,
+                  # FA.lon, EoE.lon, #not significant
+                  GERD.lon,HTA.lon,OBST.lon,APNEA.lon)
+  
+  ######## creation 
+  idx=paste0("iter",i)
+  print(idx)
+  data.splitted.los[[idx]]<-list(
+    "data2.train"=data2.train,
+    "data2.valid"=data2.valid,
+    "data2.train.AA"=data2.train.AA,
+    "data2.train.EA"=data2.train.EA,
+    "data2.train.AS"=data2.train.AS,
+    "data2.train.HL"=data2.train.HL,
+    "data2.train.MENA"=data2.train.MENA,
+    "data2.train.RF"=data2.train.RF,
+    # "dtrain.rb"=dtrain.rb,
+    # "dtrain.rn"=dtrain.rn,
+    
+    "data2.train.props"=data2.train.props,
+    "data2.valid.props"=data2.valid.props,
+    "data2.valid.AA"=data2.valid.AA,
+    "data2.valid.EA"=data2.valid.EA,
+    "data2.valid.AS"=data2.valid.AS,
+    "data2.valid.HL"=data2.valid.HL,
+    "data2.valid.MENA"=data2.valid.MENA,
+    "data2.valid.RF"=data2.valid.RF
+    # "dvalid.rb"=dvalid.rb,
+    # "dvalid.rn"=dvalid.rn
+    )
+}
+
+
+```
+
+
+
+```{r}
+save(data.splitted.los,file = "data.splitted.los.v1.RData",compress = T)
+```
+
+
+```{r}
+
+```
+

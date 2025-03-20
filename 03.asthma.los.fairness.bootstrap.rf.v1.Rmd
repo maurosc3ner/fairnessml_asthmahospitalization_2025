@@ -1,0 +1,390 @@
+---
+title: ''
+output: html_document
+date: "2023-10-10"
+---
+
+v1
+bootstrap for random forest (race-based and race-neutral), includes no sampling an oversampling 
+code clean-up
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,message=FALSE,warning = F,results = T)
+rm(list = ls())
+library(tidyverse)
+library(patchwork)
+library(rstanarm)
+library(bayesplot)
+library(loo)
+library(lme4)
+library(gtsummary)
+library(fairness)
+library(caret)
+library(randomForest)
+library(xgboost)
+
+cbPalette <- c("#E64B35", "#4DBBD5")
+source("../allofus_los_Jtrans2024/helpers.R")
+source("myFairness.R")
+
+myLevels<-c("ProlongedStay","ShortStay")
+load("data.splitted.los.v1.RData")
+```
+
+
+```{r}
+rb.eq<-formula(losBinaryFactor~
+                 s.age +
+                 sex_at_birth +
+                 s.dep +
+                 race3 +
+                 hcType1 +
+                 weekend +
+                 season +
+                 AD.lon +
+                 AR.lon +
+                 Cancer.lon +
+                 CHD.lon +
+                 CKD.lon +
+                 COPD.lon +
+                 Depression.lon +
+                 Diab.lon +
+                 # FA.lon +
+                 # EoE.lon
+                 GERD.lon +
+                 HTA.lon +
+                 OBST.lon +
+                 # PSOR.lon +
+                 APNEA.lon)
+
+rn.eq<-formula(losBinaryFactor~
+                 s.age +
+                 sex_at_birth +
+                 s.dep +
+                 # race3 +
+                 hcType1 +
+                 weekend +
+                 season +
+                 AD.lon +
+                 AR.lon +
+                 Cancer.lon +
+                 CHD.lon +
+                 CKD.lon +
+                 COPD.lon +
+                 Depression.lon +
+                 Diab.lon +
+                 # FA.lon +
+                 # EoE.lon
+                 GERD.lon +
+                 HTA.lon +
+                 OBST.lon +
+                 # PSOR.lon +
+                 APNEA.lon)
+```
+
+
+### Random forest no upsampling
+
+```{r}
+model1Label="rb.rf"
+model2Label="rn.rf"
+upsampling=F
+testDF.los.rf.bt={}
+outcomeVar="losBinaryFactor"
+for(i in 1:length(data.splitted.los)){
+# for(i in 1:5){
+  print(i)
+  idx=paste0("iter",i)
+  
+  if(upsampling){
+    data=upSampler(data.splitted.los[[idx]]$data2.train.RF,"race3",0.7)
+  }else{
+    data=data.splitted.los[[idx]]$data2.train.RF
+  }
+ 
+  model.rb.rf.ss <- randomForest(formula=rb.eq, 
+    data=data, proximity=F,mtry=4) 
+  
+  model.rn.rf.ss <- randomForest(formula=rn.eq, 
+    data=data, proximity=F,mtry=4) 
+  
+  dfResults=data.splitted.los[[idx]]$data2.valid.RF %>% dplyr::select(race3,losBinaryFactor)
+  dfResults$r30d.pred.rb.rf.ss <- factor(predict(model.rb.rf.ss, data.splitted.los[[idx]]$data2.valid.RF),levels=myLevels)
+  dfResults$r30d.pred.rn.rf.ss <- factor(predict(model.rn.rf.ss, data.splitted.los[[idx]]$data2.valid.RF),levels=myLevels)
+  ######
+  # rb all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rb.rf.ss,
+    reference=dfResults %>% pull(outcomeVar))
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                      fairmetrics2DF(F,"All",model1Label,cm))
+  # rb black aa
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(outcomeVar))
+  # print(cm$table)
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"Black_AA",model1Label,cm))
+  # rb white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'White_EA')  %>% pull(outcomeVar))
+  # print(cm$table)
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"White_EA",model1Label,cm))
+  # rb asian 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(outcomeVar))
+  # print(cm$table)
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"Asian",model1Label,cm))
+  # rb HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(outcomeVar))
+  # print(cm$table)
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"HL",model1Label,cm))
+  # print(cm$table)
+  # rb MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(outcomeVar))
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"MENA",model1Label,cm))
+  
+  ######
+  # rn all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rn.rf.ss,
+    reference=dfResults %>% pull(outcomeVar))
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(F,"All",model2Label,cm))
+  # rn black aa 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(outcomeVar))
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"Black_AA",model2Label,cm))
+  # rn white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'White_EA') %>% pull(outcomeVar))
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"White_EA",model2Label,cm))
+  # rn asian 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(outcomeVar))
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"Asian",model2Label,cm))
+  # rn HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(outcomeVar))
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"HL",model2Label,cm))
+  # rn MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(outcomeVar))
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"MENA",model2Label,cm))
+}
+```
+
+
+### Random forest  upsampling
+
+```{r}
+model1Label="rb.rf.up"
+model2Label="rn.rf.up"
+upsampling=T
+# testDF.los.rf.bt={}
+for(i in 1:length(data.splitted.los)){
+# for(i in 1:5){
+  print(i)
+  idx=paste0("iter",i)
+  
+  if(upsampling){
+    data=upSampler(data.splitted.los[[idx]]$data2.train.RF,"race3",0.7)
+  }else{
+    data=data.splitted.los[[idx]]$data2.train.RF
+  }
+ 
+  model.rb.rf.ss <- randomForest(formula=rb.eq, 
+    data=data, proximity=F,mtry=4) 
+  
+  model.rn.rf.ss <- randomForest(formula=rn.eq, 
+    data=data, proximity=F,mtry=4) 
+  
+  dfResults=data.splitted.los[[idx]]$data2.valid.RF %>% dplyr::select(race3,losBinaryFactor)
+  dfResults$r30d.pred.rb.rf.ss <- factor(predict(model.rb.rf.ss, data.splitted.los[[idx]]$data2.valid.RF),levels=myLevels)
+  dfResults$r30d.pred.rn.rf.ss <- factor(predict(model.rn.rf.ss, data.splitted.los[[idx]]$data2.valid.RF),levels=myLevels)
+  ######
+  # rb all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rb.rf.ss,
+    reference=dfResults %>% pull(outcomeVar))
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                      fairmetrics2DF(F,"All",model1Label,cm))
+  # rb black aa
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(outcomeVar))
+  # print(cm$table)
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"Black_AA",model1Label,cm))
+  # rb white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'White_EA')  %>% pull(outcomeVar))
+  # print(cm$table)
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"White_EA",model1Label,cm))
+  # rb asian 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(outcomeVar))
+  # print(cm$table)
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"Asian",model1Label,cm))
+  # rb HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(outcomeVar))
+  # print(cm$table)
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"HL",model1Label,cm))
+  # print(cm$table)
+  # rb MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(outcomeVar))
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"MENA",model1Label,cm))
+  
+  ######
+  # rn all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rn.rf.ss,
+    reference=dfResults %>% pull(outcomeVar))
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(F,"All",model2Label,cm))
+  # rn black aa 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(outcomeVar))
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"Black_AA",model2Label,cm))
+  # rn white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'White_EA') %>% pull(outcomeVar))
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"White_EA",model2Label,cm))
+  # rn asian 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(outcomeVar))
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"Asian",model2Label,cm))
+  # rn HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(outcomeVar))
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"HL",model2Label,cm))
+  # rn MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(outcomeVar))
+  testDF.los.rf.bt<-rbind(testDF.los.rf.bt,
+                   fairmetrics2DF(T,"MENA",model2Label,cm))
+}
+```
+
+
+```{r}
+save(testDF.los.rf.bt,file = "testDF.los.rf.bt.v1.RData",compress = T)
+```
+
+
+
+-Married and get h4 and then apply 6 months (preferred but not possible)
+-Follow to join 1 year (the most suitable)
+-3-5 years if filled after getting greencard (i30), she needs her full visa (spouse of a permanent resident). place in line starts after I've got greencard.
+
+Costs for 1 person
+Fee for the goverment i485 $1440, 
+EAD $260 (optional, it does not hurt)
+Advance parole $630 (traveling document), because you are on h1b, having advance parole is a protection just in case if children fires you.
+Lawyer $1500 (50:50)
+
+Documents
+passport
+i94
+visa h1b
+passport photos
+birth certificate, offiiliated translated
+
+US civil surgeon, they give you a seal envelope. ($300ish)
+
+Costs for couple
+i24 form $599
+visa $445
+
+U6W*NPbEj@.Djih
+
+
+```{r}
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='White_EA' & algo=='rb.rf') %>% pull(accuracy),0.95)
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='White_EA' & algo=='rn.rf') %>% pull(accuracy),0.95)
+
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='Black_AA' & algo=='rb.rf') %>% pull(accuracy),0.95)
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='Black_AA' & algo=='rn.rf') %>% pull(accuracy),0.95)
+
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='Asian' & algo=='rb.rf') %>% pull(accuracy),0.95)
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='Asian' & algo=='rn.rf') %>% pull(accuracy),0.95)
+
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='HL' & algo=='rb.rf') %>% pull(accuracy),0.95)
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='HL' & algo=='rn.rf') %>% pull(accuracy),0.95)
+
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='MENA' & algo=='rb.rf') %>% pull(accuracy),0.95)
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='MENA' & algo=='rn.rf') %>% pull(accuracy),0.95)
+```
+
+```{r}
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='White_EA' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='White_EA' & algo=='rn.rf') %>% pull(mcc),0.95)
+
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='Black_AA' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='Black_AA' & algo=='rn.rf') %>% pull(mcc),0.95)
+
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='Asian' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='Asian' & algo=='rn.rf') %>% pull(mcc),0.95)
+
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='HL' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='HL' & algo=='rn.rf') %>% pull(mcc),0.95)
+
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='MENA' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='MENA' & algo=='rn.rf') %>% pull(mcc),0.95)
+```
+
+```{r}
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='White_EA' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='White_EA' & algo=='rn.rf') %>% pull(mcc),0.95)
+
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='Black_AA' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='Black_AA' & algo=='rn.rf') %>% pull(mcc),0.95)
+
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='Asian' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='Asian' & algo=='rn.rf') %>% pull(mcc),0.95)
+
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='HL' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='HL' & algo=='rn.rf') %>% pull(mcc),0.95)
+
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='MENA' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.los.rf.bt %>% filter(groupoi=='MENA' & algo=='rn.rf') %>% pull(mcc),0.95)
+```

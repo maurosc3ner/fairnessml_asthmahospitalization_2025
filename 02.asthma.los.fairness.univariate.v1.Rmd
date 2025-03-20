@@ -1,0 +1,541 @@
+---
+title: ''
+output: html_document
+date: "2023-10-10"
+---
+
+v1
+Intended to data shuffling, splitting for bootstrapping for los
+XGB fails at loading. Dmatrix requires to be done outside of the list
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,message=FALSE,warning = F,results = T)
+rm(list = ls())
+library(tidyverse)
+library(patchwork)
+library(rstanarm)
+library(bayesplot)
+library(loo)
+library(lme4)
+library(gtsummary)
+library(fairness)
+library(caret)
+library(randomForest)
+library(xgboost)
+
+cbPalette <- c("#E64B35", "#4DBBD5")
+source("../allofus_los_Jtrans2024/helpers.R")
+load("../allofus_los_Jtrans2024/readmissionProject/asthma.read.multivariate.full.stan.v7.RData")
+
+rm(glmer.read.ri.full.d,glmer.read.ri.full.e,glmer.read.ri.full.f,glmer.read.ri.full.g,
+   stan.read.ri.full.d,stan.read.ri.full.e,stan.read.ri.full.f,stan.read.ri.full.g,t_prior,coefs,knots,cbPalette)
+```
+
+
+
+
+
+With patient-level partitioning, there is not cases classified as readmitted ('Yes') due to probability lower than 0.5. We should test this partitioning at visits-level.
+
+
+# Dataset partitioning by visits-level
+
+```{r}
+data.splitted<-list()
+```
+
+
+```{r}
+myLevels<-c('Yes','No')
+# visit occurrence is not unique
+# data$visit_id<-as.character(data$visit_occurrence_id)
+# data %>% 
+#   summarise(count=n_distinct(visit_id))
+
+#let's create it
+data2<-data %>% 
+  group_by(id) %>% 
+  arrange(visit_start_date) %>% 
+  mutate(id_visit=paste0(id,'-',row_number()),
+         losBinaryNum=ifelse(los==0,0,1),
+         losBinaryFactor=factor(ifelse(losBinaryNum==0,"ShortStay","ProlongedStat"),levels=c("ShortStay","ProlongedStat")))%>% 
+  ungroup()
+#check proportions on data2
+data2 %>% 
+  group_by(race3,readmission30d) %>% 
+  summarise(n=n()) %>% 
+  mutate(prop=(100*n/nrow(data2)) %>% round(1),
+         prop2t=paste0(paste0(n," (",prop,")"))
+         ) %>% 
+  select(race3,readmission30d,prop2t)
+data2$readmission30d<-factor(data2$readmission30d,levels=myLevels)
+
+#check proportions on data2
+data2 %>% 
+  group_by(race3,losBinaryFactor) %>% 
+  summarise(n=n()) %>% 
+  mutate(prop=(100*n/nrow(data2)) %>% round(1),
+         prop2t=paste0(paste0(n," (",prop,")"))
+         ) %>% 
+  select(race3,losBinaryFactor,prop2t)
+data2$readmission30d<-factor(data2$readmission30d,levels=myLevels)
+
+summary(data2$los)
+```
+
+
+
+```{r}
+# print("cp upsampling")
+m.age <- glmer(
+  losBinaryNum ~
+    s.age+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.age<-tbl_regression(m.age,exp=T)
+```
+
+
+```{r}
+m.sex <- glmer(
+  losBinaryNum ~
+    sex_at_birth+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.sex<-tbl_regression(m.sex,exp=T)
+```
+
+
+```{r}
+m.dep <- glmer(
+  losBinaryNum ~
+    s.dep+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.dep<-tbl_regression(m.dep,exp=T)
+t.dep
+
+```
+
+
+```{r}
+m.hct <- glmer(
+  losBinaryNum ~
+    hcType1+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.hct<-tbl_regression(m.hct,exp=T)
+t.hct
+```
+
+
+```{r}
+m.race <- glmer(
+  losBinaryNum ~
+    race3+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.race<-tbl_regression(m.race,exp=T)
+```
+
+
+```{r}
+m.week <- glmer(
+  losBinaryNum ~
+    weekend+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  # nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.week<-tbl_regression(m.week,exp=T)
+```
+
+
+```{r}
+m.seas <- glmer(
+  losBinaryNum ~
+    season+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  # nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+t.seas<-tbl_regression(m.seas,exp=T)
+tbl_regression(m.seas,exp=T)
+
+m.seas2 <- glmer(
+  readmission30dNum ~
+    season+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  # nAGQ = 0,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+tbl_regression(m.seas2,exp=T)
+```
+
+```{r}
+m.AD <- glmer(
+  losBinaryNum ~
+    AD.lon+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  # nAGQ = 1,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.ad<-tbl_regression(m.AD,exp=T)
+```
+
+
+```{r}
+m.AR <- glmer(
+  losBinaryNum ~
+    AR.lon+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  # nAGQ = 1,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.ar<-tbl_regression(m.AR,exp=T)
+```
+
+
+
+```{r}
+m.cancer <- glmer(
+  losBinaryNum ~
+    Cancer.lon+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  # nAGQ = 1,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.cancer<-tbl_regression(m.cancer,exp=T)
+```
+
+
+```{r}
+m.chd <- glmer(
+  losBinaryNum ~
+    CHD.lon+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  nAGQ = 1,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.chd<-tbl_regression(m.chd,exp=T)
+```
+
+
+```{r}
+m.ckd <- glmer(
+  losBinaryNum ~
+    CKD.lon+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  nAGQ = 1,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.ckd<-tbl_regression(m.ckd,exp=T)
+```
+
+
+```{r}
+m.copd <- glmer(
+  losBinaryNum ~
+    COPD.lon+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  nAGQ = 1,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.copd<-tbl_regression(m.copd,exp=T)
+```
+
+
+```{r}
+m.depr<- glmer(
+  losBinaryNum ~
+    Depression.lon+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  nAGQ = 1,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.depr<-tbl_regression(m.depr,exp=T)
+```
+
+
+
+```{r}
+m.diab <- glmer(
+  losBinaryNum ~
+    Diab.lon+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  # nAGQ = 1,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.diab<-tbl_regression(m.diab,exp=T)
+```
+
+
+```{r}
+m.eoe <- glmer(
+  losBinaryNum ~
+    EoE.lon+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  nAGQ = 1,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.eoe<-tbl_regression(m.eoe,exp=T)
+```
+
+
+```{r}
+m.fa <- glmer(
+  losBinaryNum ~
+    FA.lon+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  # nAGQ = 1,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.fa<-tbl_regression(m.fa,exp=T)
+```
+
+
+FA not significant
+
+```{r}
+m.gerd <- glmer(
+  losBinaryNum ~
+    GERD.lon+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  nAGQ = 1,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.gerd<-tbl_regression(m.gerd,exp=T)
+```
+
+
+
+```{r}
+m.hta <- glmer(
+  losBinaryNum ~
+    HTA.lon+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  # nAGQ = 1,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.hta<-tbl_regression(m.hta,exp=T)
+```
+
+
+```{r}
+m.obst <- glmer(
+  losBinaryNum ~
+    OBST.lon+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  # nAGQ = 1,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.obst<-tbl_regression(m.obst,exp=T)
+```
+
+
+```{r}
+m.apnea <- glmer(
+  losBinaryNum ~
+    APNEA.lon+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  # nAGQ = 1,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.apnea<-tbl_regression(m.apnea,exp=T)
+```
+
+
+
+
+```{r}
+m.psor <- glmer(
+  losBinaryNum ~
+    PSOR.lon+
+    (1 | id) + (1 | ehrsite),
+  data = data2,
+  family = binomial(),
+  # nAGQ = 1,
+  glmerControl(
+    optimizer = "bobyqa",
+    calc.derivs = FALSE,
+    optCtrl = list(maxfun = 2e5)
+  )
+)
+
+t.psor<-tbl_regression(m.psor,exp=T)
+```
+
+
+Psoriasis is not significant
+
+```{r}
+tbl_stack(list(t.age,t.sex, t.race,t.dep,t.week,t.seas))
+# FA, EoE and PSOR are no significant
+tbl_stack(list(t.ad,t.ar, t.cancer,t.chd,t.ckd,t.copd,t.depr,t.diab,t.eoe,t.fa,t.gerd,t.hta,t.obst,t.apnea,t.psor))
+```
+
+
+no eoe, no fa, no psor

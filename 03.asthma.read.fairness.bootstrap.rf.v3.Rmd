@@ -1,0 +1,367 @@
+---
+title: ''
+output: html_document
+date: "2023-10-10"
+---
+
+v2
+bootstrap for random forest (race-based and race-neutral), includes no sampling an oversampling 
+
+v3
+code clean-up
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,message=FALSE,warning = F,results = T)
+rm(list = ls())
+library(tidyverse)
+library(patchwork)
+library(rstanarm)
+library(bayesplot)
+library(loo)
+library(lme4)
+library(gtsummary)
+library(fairness)
+library(caret)
+library(randomForest)
+library(xgboost)
+
+cbPalette <- c("#E64B35", "#4DBBD5")
+source("../allofus_los_Jtrans2024/helpers.R")
+source("myFairness.R")
+
+myLevels<-c("Yes","No")
+load("data.splitted.v1.RData")
+```
+
+
+```{r}
+rb.eq<-formula(readmission30d ~
+      s.age:sex_at_birth +
+      s.dep +
+      race3 +
+      hcType1 +
+      weekend +
+      # season + 
+      # AD.lon +
+      AR.lon +
+      # Cancer.lon+
+      CHD.lon +
+      CKD.lon +
+      COPD.lon +
+      Depression.lon +
+      Diab.lon +
+      FA.lon +
+      # EoE.lon
+      GERD.lon +
+      HTA.lon +
+      OBST.lon +
+      PSOR.lon +
+      APNEA.lon)
+
+rn.eq<-formula(readmission30d ~
+      s.age:sex_at_birth +
+      s.dep +
+      race3 +
+      hcType1 +
+      weekend +
+      # season + 
+      # AD.lon +
+      AR.lon +
+      # Cancer.lon+
+      CHD.lon +
+      CKD.lon +
+      COPD.lon +
+      Depression.lon +
+      Diab.lon +
+      FA.lon +
+      # EoE.lon
+      GERD.lon +
+      HTA.lon +
+      OBST.lon +
+      PSOR.lon +
+      APNEA.lon)
+```
+
+
+### Random forest no upsampling
+
+```{r}
+model1Label="rb.rf"
+model2Label="rn.rf"
+upsampling=F
+testDF.read.rf.bt={}
+outcomeVar="readmission30d"
+for(i in 1:length(data.splitted)){
+# for(i in 1:3){
+  print(i)
+  idx=paste0("iter",i)
+  
+  if(upsampling){
+    data=upSampler(data.splitted[[idx]]$data2.train.RF,"race3",0.7)
+  }else{
+    data=data.splitted[[idx]]$data2.train.RF
+  }
+  data$hcType1<-factor(data$hcType1)
+  model.rb.rf.ss <- randomForest(formula=rb.eq, 
+    data=data, proximity=F,mtry=4) 
+  
+  model.rn.rf.ss <- randomForest(formula=rn.eq, 
+    data=data, proximity=F,mtry=4) 
+  
+  data.splitted[[idx]]$data2.valid.RF$hcType1<-factor(data.splitted[[idx]]$data2.valid.RF$hcType1)
+  dfResults=data.splitted[[idx]]$data2.valid.RF %>% dplyr::select(race3,any_of(outcomeVar))
+  dfResults$r30d.pred.rb.rf.ss <- factor(predict(model.rb.rf.ss, data.splitted[[idx]]$data2.valid.RF),levels=myLevels)
+  dfResults$r30d.pred.rn.rf.ss <- factor(predict(model.rn.rf.ss, data.splitted[[idx]]$data2.valid.RF),levels=myLevels)
+  ######
+  # rb all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rb.rf.ss,
+    reference=dfResults %>% pull(any_of(outcomeVar)))
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                      fairmetrics2DF(F,"All",model1Label,cm))
+  # rb black aa
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(any_of(outcomeVar)))
+  # print(cm$table)
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"Black_AA",model1Label,cm))
+  # rb white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'White_EA')  %>% pull(any_of(outcomeVar)))
+  # print(cm$table)
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"White_EA",model1Label,cm))
+  # rb asian 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(any_of(outcomeVar)))
+  # print(cm$table)
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"Asian",model1Label,cm))
+  # rb HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(any_of(outcomeVar)))
+  # print(cm$table)
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"HL",model1Label,cm))
+  # print(cm$table)
+  # rb MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(any_of(outcomeVar)))
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"MENA",model1Label,cm))
+  
+  ######
+  # rn all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rn.rf.ss,
+    reference=dfResults %>% pull(any_of(outcomeVar)))
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(F,"All",model2Label,cm))
+  # rn black aa 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(any_of(outcomeVar)))
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"Black_AA",model2Label,cm))
+  # rn white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'White_EA') %>% pull(any_of(outcomeVar)))
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"White_EA",model2Label,cm))
+  # rn asian 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(any_of(outcomeVar)))
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"Asian",model2Label,cm))
+  # rn HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(any_of(outcomeVar)))
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"HL",model2Label,cm))
+  # rn MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(any_of(outcomeVar)))
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"MENA",model2Label,cm))
+}
+```
+
+
+### Random forest  upsampling
+
+```{r}
+model1Label="rb.rf.up"
+model2Label="rn.rf.up"
+upsampling=T
+# testDF.read.rf.bt={}
+for(i in 1:length(data.splitted)){
+# for(i in 1:3){
+  print(i)
+  idx=paste0("iter",i)
+  
+  if(upsampling){
+    data=upSampler(data.splitted[[idx]]$data2.train.RF,"race3",0.7)
+  }else{
+    data=data.splitted[[idx]]$data2.train.RF
+  }
+  data$hcType1<-factor(data$hcType1)
+  model.rb.rf.ss <- randomForest(formula=rb.eq, 
+    data=data, proximity=F,mtry=4) 
+  
+  model.rn.rf.ss <- randomForest(formula=rn.eq, 
+    data=data, proximity=F,mtry=4) 
+  
+  data.splitted[[idx]]$data2.valid.RF$hcType1<-factor(data.splitted[[idx]]$data2.valid.RF$hcType1)
+  dfResults=data.splitted[[idx]]$data2.valid.RF %>% dplyr::select(race3,any_of(outcomeVar))
+  dfResults$r30d.pred.rb.rf.ss <- factor(predict(model.rb.rf.ss, data.splitted[[idx]]$data2.valid.RF),levels=myLevels)
+  dfResults$r30d.pred.rn.rf.ss <- factor(predict(model.rn.rf.ss, data.splitted[[idx]]$data2.valid.RF),levels=myLevels)
+  ######
+  # rb all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rb.rf.ss,
+    reference=dfResults %>% pull(any_of(outcomeVar)))
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                      fairmetrics2DF(F,"All",model1Label,cm))
+  # rb black aa
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(any_of(outcomeVar)))
+  # print(cm$table)
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"Black_AA",model1Label,cm))
+  # rb white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'White_EA')  %>% pull(any_of(outcomeVar)))
+  # print(cm$table)
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"White_EA",model1Label,cm))
+  # rb asian 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(any_of(outcomeVar)))
+  # print(cm$table)
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"Asian",model1Label,cm))
+  # rb HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(any_of(outcomeVar)))
+  # print(cm$table)
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"HL",model1Label,cm))
+  # print(cm$table)
+  # rb MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rb.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(any_of(outcomeVar)))
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"MENA",model1Label,cm))
+  
+  ######
+  # rn all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rn.rf.ss,
+    reference=dfResults %>% pull(any_of(outcomeVar)))
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(F,"All",model2Label,cm))
+  # rn black aa 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(any_of(outcomeVar)))
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"Black_AA",model2Label,cm))
+  # rn white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'White_EA') %>% pull(any_of(outcomeVar)))
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"White_EA",model2Label,cm))
+  # rn asian 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(any_of(outcomeVar)))
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"Asian",model2Label,cm))
+  # rn HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(any_of(outcomeVar)))
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"HL",model2Label,cm))
+  # rn MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rn.rf.ss), 
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(any_of(outcomeVar)))
+  testDF.read.rf.bt<-rbind(testDF.read.rf.bt,
+                   fairmetrics2DF(T,"MENA",model2Label,cm))
+}
+```
+
+
+```{r}
+save(testDF.read.rf.bt,file = "testDF.read.rf.bt.v3.RData",compress = T)
+```
+
+
+
+```{r}
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='White_EA' & algo=='rb.rf') %>% pull(accuracy),0.95)
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='White_EA' & algo=='rn.rf') %>% pull(accuracy),0.95)
+
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='Black_AA' & algo=='rb.rf') %>% pull(accuracy),0.95)
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='Black_AA' & algo=='rn.rf') %>% pull(accuracy),0.95)
+
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='Asian' & algo=='rb.rf') %>% pull(accuracy),0.95)
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='Asian' & algo=='rn.rf') %>% pull(accuracy),0.95)
+
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='HL' & algo=='rb.rf') %>% pull(accuracy),0.95)
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='HL' & algo=='rn.rf') %>% pull(accuracy),0.95)
+
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='MENA' & algo=='rb.rf') %>% pull(accuracy),0.95)
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='MENA' & algo=='rn.rf') %>% pull(accuracy),0.95)
+```
+
+
+```{r}
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='White_EA' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='White_EA' & algo=='rn.rf') %>% pull(mcc),0.95)
+
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='Black_AA' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='Black_AA' & algo=='rn.rf') %>% pull(mcc),0.95)
+
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='Asian' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='Asian' & algo=='rn.rf') %>% pull(mcc),0.95)
+
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='HL' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='HL' & algo=='rn.rf') %>% pull(mcc),0.95)
+
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='MENA' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='MENA' & algo=='rn.rf') %>% pull(mcc),0.95)
+```
+
+```{r}
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='White_EA' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='White_EA' & algo=='rn.rf') %>% pull(mcc),0.95)
+
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='Black_AA' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='Black_AA' & algo=='rn.rf') %>% pull(mcc),0.95)
+
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='Asian' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='Asian' & algo=='rn.rf') %>% pull(mcc),0.95)
+
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='HL' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='HL' & algo=='rn.rf') %>% pull(mcc),0.95)
+
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='MENA' & algo=='rb.rf') %>% pull(mcc),0.95)
+confidence_interval(testDF.read.rf.bt %>% filter(groupoi=='MENA' & algo=='rn.rf') %>% pull(mcc),0.95)
+```

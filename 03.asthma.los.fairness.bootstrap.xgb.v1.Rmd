@@ -1,0 +1,316 @@
+---
+title: ''
+output: html_document
+date: "2023-10-10"
+---
+
+v1
+bootstrapping for xgb models on LoS
+code clean up, reusability
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,message=FALSE,warning = F,results = T)
+rm(list = ls())
+library(tidyverse)
+library(patchwork)
+library(rstanarm)
+library(bayesplot)
+library(loo)
+library(lme4)
+library(gtsummary)
+library(fairness)
+library(caret)
+library(randomForest)
+library(xgboost)
+library(themis)
+cbPalette <- c("#E64B35", "#4DBBD5")
+source("../allofus_los_Jtrans2024/helpers.R")
+source("myFairness.R")
+
+myLevels<-c("ProlongedStay","ShortStay")
+load("data.splitted.los.v1.RData")
+```
+
+
+# XGB no upsampling
+
+```{r}
+model1Label="rb.xgb"
+model2Label="rn.xgb"
+upsampling=F
+outcomeVar<-"losBinaryFactor"
+testDF.los.xgb.bt={}
+# for(i in 1:length(data.splitted.los)){
+for(i in 1:1){
+  print(i)
+  idx=paste0("iter",i)
+  if(upsampling){
+    data=upSampler(data.splitted.los[[idx]]$data2.train,"race3",0.7)
+  }else{
+    data=data.splitted.los[[idx]]$data2.train
+  }
+  # Dmatrix
+  dtrain.rb=df2DmatrixLos(data,'rb')
+  dvalid.rb=df2DmatrixLos(data.splitted.los[[idx]]$data2.valid,'rb')
+  dtrain.rn=df2DmatrixLos(data,'rn')
+  dvalid.rn=df2DmatrixLos(data.splitted.los[[idx]]$data2.valid,'rn')
+
+  # get the number of negative & positive cases in our data
+  train.labels=ifelse(data %>% pull(any_of(outcomeVar))==myLevels[1],T,F)
+  valid.labels=ifelse(data.splitted.los[[idx]]$data2.valid %>% pull(any_of(outcomeVar))==myLevels[1],T,F)
+  negative_cases <- sum(train.labels == FALSE)
+  postive_cases <- sum(train.labels == TRUE)
+  # race-based XGB
+  model.rb.xgb.ss <- xgboost(data = dtrain.rb, # the data     
+                   nround = 1000, # max number of boosting iterations,
+                   max.depth = 3,print_every_n = 500, # the maximum depth of each decision tree
+                   early_stopping_rounds = 10, # if we dont see an improvement in this many rounds, stop
+                   scale_pos_weight = negative_cases/postive_cases, # control for imbalanced classes
+                   objective = "binary:logistic")  # the objective function
+  # race-neutral XGB
+  model.rn.xgb.ss <- xgboost(data = dtrain.rn, # the data   
+                   nround = 1000, # max number of boosting iterations,
+                   max.depth = 3,print_every_n = 500, # the maximum depth of each decision tree
+                   early_stopping_rounds = 10, # if we dont see an improvement in this many rounds, stop
+                   scale_pos_weight = negative_cases/postive_cases, # control for imbalanced classes
+                   objective = "binary:logistic")  # the objective function
+
+  ###### results
+  dfResults=data.splitted.los[[idx]]$data2.valid %>% dplyr::select(race3,any_of(outcomeVar))
+  dfResults$prob.rb.xgb<-predict(model.rb.xgb.ss,dvalid.rb)
+  dfResults$r30d.pred.rb.xgb.ss<-factor(ifelse(dfResults$prob.rb.xgb>0.5,myLevels[1],myLevels[2]),levels=myLevels)
+  dfResults$prob.rn.xgb<-predict(model.rn.xgb.ss,dvalid.rn)
+  dfResults$r30d.pred.rn.xgb.ss<-factor(ifelse(dfResults$prob.rn.xgb>0.5,myLevels[1],myLevels[2]),levels=myLevels)
+  
+  ######
+  # rb all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rb.xgb.ss,
+    reference=dfResults %>% pull(any_of(outcomeVar)))
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                      fairmetrics2DF(F,"All",model1Label,cm))
+  # rb black aa
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rb.xgb.ss), 
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(any_of(outcomeVar)))
+  # print(cm$table)
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"Black_AA",model1Label,cm))
+  # rb white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rb.xgb.ss), 
+    reference = dfResults %>% filter(race3 == 'White_EA') %>% pull(any_of(outcomeVar)))
+  # print(cm$table)
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"White_EA",model1Label,cm))
+  # rb asian 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rb.xgb.ss), 
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(any_of(outcomeVar)))
+  # print(cm$table)
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"Asian",model1Label,cm))
+  # rb HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rb.xgb.ss), 
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(any_of(outcomeVar)))
+  # print(cm$table)
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"HL",model1Label,cm))
+  # print(cm$table)
+  # rb MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rb.xgb.ss), 
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(any_of(outcomeVar)))
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"MENA",model1Label,cm))
+  
+  ###### race neutral xgb
+  # rn all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rn.xgb.ss,
+    reference=dfResults%>% pull(any_of(outcomeVar)))
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(F,"All",model2Label,cm))
+  # rn black aa
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rn.xgb.ss),
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(any_of(outcomeVar)))
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"Black_AA",model2Label,cm))
+  # rn white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rn.xgb.ss),
+    reference = dfResults %>% filter(race3 == 'White_EA') %>% pull(any_of(outcomeVar)))
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"White_EA",model2Label,cm))
+  # rn asian
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rn.xgb.ss),
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(any_of(outcomeVar)))
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"Asian",model2Label,cm))
+  # rn HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rn.xgb.ss),
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(any_of(outcomeVar)))
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"HL",model2Label,cm))
+  # rn MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rn.xgb.ss),
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(any_of(outcomeVar)))
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"MENA",model2Label,cm))
+}
+```
+
+
+# XGB  upsampling
+
+```{r}
+model1Label="rb.xgb.up"
+model2Label="rn.xgb.up"
+upsampling=T
+# testDF.los.xgb.bt={}
+# for(i in 1:length(data.splitted.los)){
+for(i in 1:1){
+  print(i)
+  idx=paste0("iter",i)
+  if(upsampling){
+    data=upSampler(data.splitted.los[[idx]]$data2.train,"race3",0.7)
+  }else{
+    data=data.splitted.los[[idx]]$data2.train
+  }
+  # Dmatrix
+  dtrain.rb=df2DmatrixLos(data,'rb')
+  dvalid.rb=df2DmatrixLos(data.splitted.los[[idx]]$data2.valid,'rb')
+  dtrain.rn=df2DmatrixLos(data,'rn')
+  dvalid.rn=df2DmatrixLos(data.splitted.los[[idx]]$data2.valid,'rn')
+
+  # get the number of negative & positive cases in our data
+  train.labels=ifelse(data%>% pull(any_of(outcomeVar))==myLevels[1],T,F)
+  valid.labels=ifelse(data.splitted.los[[idx]]$data2.valid%>% pull(any_of(outcomeVar))==myLevels[1],T,F)
+  negative_cases <- sum(train.labels == FALSE)
+  postive_cases <- sum(train.labels == TRUE)
+  # race-based XGB
+  model.rb.xgb.ss <- xgboost(data = dtrain.rb, # the data     
+                   nround = 1000, # max number of boosting iterations,
+                   max.depth = 3,print_every_n = 500, # the maximum depth of each decision tree
+                   early_stopping_rounds = 10, # if we dont see an improvement in this many rounds, stop
+                   scale_pos_weight = negative_cases/postive_cases, # control for imbalanced classes
+                   objective = "binary:logistic")  # the objective function
+  # race-neutral XGB
+  model.rn.xgb.ss <- xgboost(data = dtrain.rn, # the data   
+                   nround = 1000, # max number of boosting iterations,
+                   max.depth = 3,print_every_n = 500, # the maximum depth of each decision tree
+                   early_stopping_rounds = 10, # if we dont see an improvement in this many rounds, stop
+                   scale_pos_weight = negative_cases/postive_cases, # control for imbalanced classes
+                   objective = "binary:logistic")  # the objective function
+
+  ###### results
+  dfResults=data.splitted.los[[idx]]$data2.valid %>% dplyr::select(race3,any_of(outcomeVar))
+  dfResults$prob.rb.xgb<-predict(model.rb.xgb.ss,dvalid.rb)
+  dfResults$r30d.pred.rb.xgb.ss<-factor(ifelse(dfResults$prob.rb.xgb>0.5,myLevels[1],myLevels[2]),levels=myLevels)
+  dfResults$prob.rn.xgb<-predict(model.rn.xgb.ss,dvalid.rn)
+  dfResults$r30d.pred.rn.xgb.ss<-factor(ifelse(dfResults$prob.rn.xgb>0.5,myLevels[1],myLevels[2]),levels=myLevels)
+  
+  ######
+  # rb all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rb.xgb.ss,
+    reference=dfResults%>% pull(any_of(outcomeVar)))
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                      fairmetrics2DF(F,"All",model1Label,cm))
+  # rb black aa
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rb.xgb.ss), 
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(any_of(outcomeVar)))
+  # print(cm$table)
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"Black_AA",model1Label,cm))
+  # rb white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rb.xgb.ss), 
+    reference = dfResults %>% filter(race3 == 'White_EA') %>% pull(any_of(outcomeVar)))
+  # print(cm$table)
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"White_EA",model1Label,cm))
+  # rb asian 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rb.xgb.ss), 
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(any_of(outcomeVar)))
+  # print(cm$table)
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"Asian",model1Label,cm))
+  # rb HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rb.xgb.ss), 
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(any_of(outcomeVar)))
+  # print(cm$table)
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"HL",model1Label,cm))
+  # print(cm$table)
+  # rb MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rb.xgb.ss), 
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(any_of(outcomeVar)))
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"MENA",model1Label,cm))
+  
+  ###### race neutral xgb
+  # rn all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rn.xgb.ss,
+    reference=dfResults%>% pull(any_of(outcomeVar)))
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(F,"All",model2Label,cm))
+  # rn black aa
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rn.xgb.ss),
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(any_of(outcomeVar)))
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"Black_AA",model2Label,cm))
+  # rn white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rn.xgb.ss),
+    reference = dfResults %>% filter(race3 == 'White_EA') %>% pull(any_of(outcomeVar)))
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"White_EA",model2Label,cm))
+  # rn asian
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rn.xgb.ss),
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(any_of(outcomeVar)))
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"Asian",model2Label,cm))
+  # rn HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rn.xgb.ss),
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(any_of(outcomeVar)))
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"HL",model2Label,cm))
+  # rn MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rn.xgb.ss),
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(any_of(outcomeVar)))
+  testDF.los.xgb.bt<-rbind(testDF.los.xgb.bt,
+                   fairmetrics2DF(T,"MENA",model2Label,cm))
+}
+```
+
+
+```{r}
+save(testDF.los.xgb.bt,file = "testDF.los.xgb.bt.RData",compress = T)
+```
+
+```{r}
+confidence_interval(testDF.los.xgb.bt %>% filter(groupoi=='White_EA' & algo=='rb.xgb.up') %>% pull(sensitivity),0.95)
+confidence_interval(testDF.los.xgb.bt %>% filter(groupoi=='White_EA' & algo=='rn.xgb.up') %>% pull(sensitivity),0.95)
+
+confidence_interval(testDF.los.xgb.bt %>% filter(groupoi=='MENA' & algo=='rb.xgb.up') %>% pull(sensitivity),0.95)
+confidence_interval(testDF.los.xgb.bt %>% filter(groupoi=='MENA' & algo=='rn.xgb.up') %>% pull(sensitivity),0.95)
+```
+
+
+

@@ -1,0 +1,411 @@
+---
+title: ''
+output: html_document
+date: "2023-10-10"
+---
+
+v1
+bootstrapping for catboost read30 outcome
+
+v2
+code clean up
+
+```{r}
+#fix from https://catboost.ai/en/docs/installation/r-installation-binary-installation
+# remotes::install_url('https://github.com/catboost/catboost/releases/download/v1.2.5/catboost-R-darwin-universal2-1.2.5.tgz', INSTALL_opts = c("--no-multiarch", "--no-test-load","--no-staged-install"))
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,message=FALSE,warning = F,results = T)
+rm(list = ls())
+library(tidyverse)
+library(patchwork)
+library(rstanarm)
+library(bayesplot)
+library(loo)
+library(lme4)
+library(gtsummary)
+library(fairness)
+library(caret)
+library(randomForest)
+library(catboost)
+library(themis)
+cbPalette <- c("#E64B35", "#4DBBD5")
+source("../allofus_los_Jtrans2024/helpers.R")
+source("myFairness.R")
+
+myLevels<-c("Yes","No")
+load("data.splitted.v1.RData")
+```
+
+
+One iteration for fine tunning
+
+```{r}
+outcomeVar="readmission30d"
+upsampling=F
+idx=paste0("iter",1)
+if(upsampling){
+  data=upSampler(data.splitted[[idx]]$data2.train,"race3",0.7)
+}else{
+  data=data.splitted[[idx]]$data2.train
+}
+# data matrix
+dtrain.rb=df2CatboostRead30(data,'rb',F)
+dvalid.rb=df2CatboostRead30(data.splitted[[idx]]$data2.valid,'rb',F)
+dtrain.rn=df2CatboostRead30(data,'rn',F)
+dvalid.rn=df2CatboostRead30(data.splitted[[idx]]$data2.valid,'rn',F)
+## Prepare dataset
+b<-ifelse(dtrain.rb %>% pull(outcomeVar)==myLevels[1],1,0)
+summary(factor(dtrain.rb%>% pull(outcomeVar)))
+summary(factor(b))
+# race-based catboost
+catb.pool<-catboost.load_pool(data=dtrain.rb %>% dplyr::select(-any_of(outcomeVar)),
+                           label = ifelse(dtrain.rb %>% pull(outcomeVar)==myLevels[1],1,0))
+fit_params = list(loss_function = 'Logloss',
+              iterations = 500, metric_period=100)
+model.rb.catb.ss <- catboost.train(catb.pool, params = fit_params)
+
+fit_control <- trainControl(method = "cv",
+                          number = 4,
+                          classProbs = TRUE)
+grid <- expand.grid(depth = c(4, 6, 8),
+                  learning_rate =  c(0.05,0.1),
+                  iterations = c(100,500),
+                  l2_leaf_reg = c(1e-2,1e-3),
+                  rsm = 0.95,
+                  border_count = c(32,64))
+
+# report1 <- train(x = dtrain.rb %>% dplyr::select(-any_of(OutcomeVar)), as.factor(make.names(dtrain.rb %>% pull(OutcomeVar))),
+
+report1 <- train(x = dtrain.rb %>% dplyr::select(-any_of(outcomeVar)), y=ifelse(dtrain.rb %>% pull(outcomeVar)==myLevels[1],1,0),
+                               method = catboost.caret,
+              logging_level = 'Verbose', preProc = NULL,
+              tuneGrid = grid, trControl = fit_control)
+
+print(report1)
+### Not encoding
+# data matrix
+dtrain.rb=df2CatboostRead30(data,'rb',F)
+dvalid.rb=df2CatboostRead30(data.splitted[[idx]]$data2.valid,'rb',F)
+dtrain.rn=df2CatboostRead30(data,'rn',F)
+dvalid.rn=df2CatboostRead30(data.splitted[[idx]]$data2.valid,'rn',F)
+
+# race-based catboost
+catb.pool<-catboost.load_pool(data=dtrain.rb %>% dplyr::select(-any_of(outcomeVar)),
+                           label = ifelse(dtrain.rb %>% pull(outcomeVar)==myLevels[1],1,0),
+                           cat_features = 2:18)
+fit_params = list(loss_function = 'Logloss',
+              iterations = 500, metric_period=50)
+
+model.rb.catb.ss <- catboost.train(catb.pool, params = fit_params)
+
+report2 <- train(x = dtrain.rb %>% dplyr::select(-any_of(outcomeVar)), y=ifelse(dtrain.rb %>% pull(outcomeVar)==myLevels[1],1,0),
+              method = catboost.caret,
+              logging_level = 'Verbose', preProc = NULL,
+              tuneGrid = grid, trControl = fit_control)
+print(report2)
+# print(report2)The final values used for the model were depth = 8, learning_rate = 0.05, iterations = 500, l2_leaf_reg = 0.01, rsm = 0.95, border_count = 32.
+```
+
+
+
+# Catboost stratified sampling
+
+```{r}
+outcomeVar="readmission30d"
+upsampling<-F
+model1Label="rb.catb"
+model2Label="rn.catb"
+fit_params = list(loss_function = 'Logloss',
+                iterations = 500, metric_period=100,logging_level = 'Silent',
+                depth = 8, learning_rate = 0.05, l2_leaf_reg = 0.01, rsm = 0.95, border_count = 32)
+testDF.read.catb.bt={}
+for(i in 1:length(data.splitted)){
+# for(i in 1:3){
+  print(i)
+  idx=paste0("iter",i)
+  if(upsampling){
+    data=upSampler(data.splitted[[idx]]$data2.train,"race3",0.7)
+  }else{
+    data=data.splitted[[idx]]$data2.train
+  }
+  # data matrix
+  dtrain.rb=df2CatboostRead30(data,'rb',onehot = F)
+  dvalid.rb=df2CatboostRead30(data.splitted[[idx]]$data2.valid,'rb',onehot = F)
+  dtrain.rn=df2CatboostRead30(data,'rn',onehot = F)
+  dvalid.rn=df2CatboostRead30(data.splitted[[idx]]$data2.valid,'rn',onehot = F)
+
+  # race-based catboost
+  catb.pool<-catboost.load_pool(data=dtrain.rb %>% dplyr::select(-any_of(outcomeVar)),
+                             label = ifelse(dtrain.rb %>% pull(outcomeVar)==myLevels[1],1,0))
+  model.rb.catb.ss <- catboost.train(catb.pool, params = fit_params)
+  # race-neutral catboost
+  catb.pool<-catboost.load_pool(data=dtrain.rn %>% dplyr::select(-any_of(outcomeVar)),
+                             label = ifelse(dtrain.rb %>% pull(outcomeVar)==myLevels[1],1,0))
+  model.rn.catb.ss <- catboost.train(catb.pool, params = fit_params)
+
+  ###### results
+  dfResults=data.splitted[[idx]]$data2.valid %>% dplyr::select(race3,any_of(outcomeVar))
+  catb.validpool<-catboost.load_pool(data=dvalid.rb %>% dplyr::select(-any_of(outcomeVar)))
+  dfResults$prob.rb.catb<-catboost.predict(model.rb.catb.ss,pool = catb.validpool,prediction_type = 'Probability' )
+  dfResults$r30d.pred.rb.catb.ss<-factor(ifelse(dfResults$prob.rb.catb>0.5,myLevels[1],myLevels[2]),levels=myLevels)
+  
+  catb.validpool<-catboost.load_pool(data=dvalid.rn %>% dplyr::select(-any_of(outcomeVar)))
+  dfResults$prob.rn.catb<-catboost.predict(model.rn.catb.ss,pool = catb.validpool,prediction_type = 'Probability' )
+  dfResults$r30d.pred.rn.catb.ss<-factor(ifelse(dfResults$prob.rn.catb>0.5,myLevels[1],myLevels[2]),levels=myLevels)
+  
+  ######
+  # rb all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rb.catb.ss,
+    reference=dfResults %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                      fairmetrics2DF(F,"All",model1Label,cm))
+  # rb black aa
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rb.catb.ss), 
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"Black_AA",model1Label,cm))
+  # rb white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rb.catb.ss), 
+    reference = dfResults %>% filter(race3 == 'White_EA') %>% pull(outcomeVar))
+  # print(cm$table)
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"White_EA",model1Label,cm))
+  # rb asian 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rb.catb.ss), 
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"Asian",model1Label,cm))
+  # rb HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rb.catb.ss), 
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(outcomeVar))
+  # print(cm$table)
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"HL",model1Label,cm))
+  # print(cm$table)
+  # rb MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rb.catb.ss), 
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"MENA",model1Label,cm))
+  
+  ###### race neutral xgb
+  # rn all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rn.catb.ss,
+    reference=dfResults%>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(F,"All",model2Label,cm))
+  # rn black aa
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rn.catb.ss),
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"Black_AA",model2Label,cm))
+  # rn white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rn.catb.ss),
+    reference = dfResults %>% filter(race3 == 'White_EA') %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"White_EA",model2Label,cm))
+  # rn asian
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rn.catb.ss),
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"Asian",model2Label,cm))
+  # rn HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rn.catb.ss),
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"HL",model2Label,cm))
+  # rn MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rn.catb.ss),
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"MENA",model2Label,cm))
+} 
+```
+
+
+```{r}
+outcomeVar="readmission30d"
+upsampling<-T
+model1Label="rb.catb.up"
+model2Label="rn.catb.up"
+
+for(i in 1:length(data.splitted)){
+# for(i in 1:3){
+  print(i)
+  idx=paste0("iter",i)
+  if(upsampling){
+    data=upSampler(data.splitted[[idx]]$data2.train,"race3",0.7)
+  }else{
+    data=data.splitted[[idx]]$data2.train
+  }
+  # data matrix
+  dtrain.rb=df2CatboostRead30(data,'rb',onehot = F)
+  dvalid.rb=df2CatboostRead30(data.splitted[[idx]]$data2.valid,'rb',onehot = F)
+  dtrain.rn=df2CatboostRead30(data,'rn',onehot = F)
+  dvalid.rn=df2CatboostRead30(data.splitted[[idx]]$data2.valid,'rn',onehot = F)
+
+  # race-based catboost
+  catb.pool<-catboost.load_pool(data=dtrain.rb %>% dplyr::select(-any_of(outcomeVar)),
+                             label = ifelse(dtrain.rb %>% pull(outcomeVar)==myLevels[1],1,0))
+  model.rb.catb.ss <- catboost.train(catb.pool, params = fit_params)
+  # race-neutral catboost
+  catb.pool<-catboost.load_pool(data=dtrain.rn %>% dplyr::select(-any_of(outcomeVar)),
+                             label = ifelse(dtrain.rb %>% pull(outcomeVar)==myLevels[1],1,0))
+  model.rn.catb.ss <- catboost.train(catb.pool, params = fit_params)
+
+  ###### results
+  dfResults=data.splitted[[idx]]$data2.valid %>% dplyr::select(race3,any_of(outcomeVar))
+  catb.validpool<-catboost.load_pool(data=dvalid.rb %>% dplyr::select(-any_of(outcomeVar)))
+  dfResults$prob.rb.catb<-catboost.predict(model.rb.catb.ss,pool = catb.validpool,prediction_type = 'Probability' )
+  dfResults$r30d.pred.rb.catb.ss<-factor(ifelse(dfResults$prob.rb.catb>0.5,myLevels[1],myLevels[2]),levels=myLevels)
+  
+  catb.validpool<-catboost.load_pool(data=dvalid.rn %>% dplyr::select(-any_of(outcomeVar)))
+  dfResults$prob.rn.catb<-catboost.predict(model.rn.catb.ss,pool = catb.validpool,prediction_type = 'Probability' )
+  dfResults$r30d.pred.rn.catb.ss<-factor(ifelse(dfResults$prob.rn.catb>0.5,myLevels[1],myLevels[2]),levels=myLevels)
+  
+  ######
+  # rb all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rb.catb.ss,
+    reference=dfResults %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                      fairmetrics2DF(F,"All",model1Label,cm))
+  # rb black aa
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rb.catb.ss), 
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"Black_AA",model1Label,cm))
+  # rb white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rb.catb.ss), 
+    reference = dfResults %>% filter(race3 == 'White_EA') %>% pull(outcomeVar))
+  # print(cm$table)
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"White_EA",model1Label,cm))
+  # rb asian 
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rb.catb.ss), 
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"Asian",model1Label,cm))
+  # rb HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rb.catb.ss), 
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(outcomeVar))
+  # print(cm$table)
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"HL",model1Label,cm))
+  # print(cm$table)
+  # rb MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rb.catb.ss), 
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"MENA",model1Label,cm))
+  
+  ###### race neutral xgb
+  # rn all
+  cm<-confusionMatrix(
+    data=dfResults$r30d.pred.rn.catb.ss,
+    reference=dfResults%>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(F,"All",model2Label,cm))
+  # rn black aa
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Black_AA') %>% pull(r30d.pred.rn.catb.ss),
+    reference = dfResults %>% filter(race3 == 'Black_AA') %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"Black_AA",model2Label,cm))
+  # rn white ea
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'White_EA') %>% pull(r30d.pred.rn.catb.ss),
+    reference = dfResults %>% filter(race3 == 'White_EA') %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"White_EA",model2Label,cm))
+  # rn asian
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'Asian') %>% pull(r30d.pred.rn.catb.ss),
+    reference = dfResults %>% filter(race3 == 'Asian') %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"Asian",model2Label,cm))
+  # rn HL
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'HL') %>% pull(r30d.pred.rn.catb.ss),
+    reference = dfResults %>% filter(race3 == 'HL') %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"HL",model2Label,cm))
+  # rn MENA
+  cm<-confusionMatrix(
+    data = dfResults %>% filter(race3 == 'MENA') %>% pull(r30d.pred.rn.catb.ss),
+    reference = dfResults %>% filter(race3 == 'MENA') %>% pull(outcomeVar))
+  testDF.read.catb.bt<-rbind(testDF.read.catb.bt,
+                   fairmetrics2DF(T,"MENA",model2Label,cm))
+} 
+```
+
+
+
+```{r}
+save(testDF.read.catb.bt,file = "testDF.read.catb.bt.v2.RData",compress = T)
+```
+
+
+```{r}
+rbind(
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='White_EA' & algo=='rb.catb') %>% pull(sensitivity),0.95),
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='White_EA' & algo=='rn.catb') %>% pull(sensitivity),0.95))
+
+rbind(
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='Black_AA' & algo=='rb.catb') %>% pull(sensitivity),0.95),
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='Black_AA' & algo=='rn.catb') %>% pull(sensitivity),0.95))
+
+rbind(
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='Asian' & algo=='rb.catb') %>% pull(sensitivity),0.95),
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='Asian' & algo=='rn.catb') %>% pull(sensitivity),0.95))
+
+rbind(
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='HL' & algo=='rb.catb') %>% pull(sensitivity),0.95),
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='HL' & algo=='rn.catb') %>% pull(sensitivity),0.95))
+
+rbind(
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='MENA' & algo=='rb.catb') %>% pull(sensitivity),0.95),
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='MENA' & algo=='rn.catb') %>% pull(sensitivity),0.95))
+```
+
+```{r}
+rbind(
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='White_EA' & algo=='rb.catb.up') %>% pull(sensitivity),0.95),
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='White_EA' & algo=='rn.catb.up') %>% pull(sensitivity),0.95))
+
+rbind(
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='Black_AA' & algo=='rb.catb.up') %>% pull(sensitivity),0.95),
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='Black_AA' & algo=='rn.catb.up') %>% pull(sensitivity),0.95))
+
+rbind(
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='Asian' & algo=='rb.catb.up') %>% pull(sensitivity),0.95),
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='Asian' & algo=='rn.catb.up') %>% pull(sensitivity),0.95))
+
+rbind(
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='HL' & algo=='rb.catb.up') %>% pull(sensitivity),0.95),
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='HL' & algo=='rn.catb.up') %>% pull(sensitivity),0.95))
+
+rbind(
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='MENA' & algo=='rb.catb.up') %>% pull(sensitivity),0.95),
+confidence_interval(testDF.read.catb.bt %>% filter(groupoi=='MENA' & algo=='rn.catb.up') %>% pull(sensitivity),0.95))
+```
